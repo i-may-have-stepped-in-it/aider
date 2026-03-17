@@ -3,10 +3,10 @@
 </p>
 
 <h1 align="center">
-Aider (Autonomous Multi-Agent Edition)
+Aider (Autonomous Multi-Agent Edition) v1.0.0-parity-plus
 </h1>
 
-> **Note**: This is a specialized fork of the original [Aider](https://github.com/Aider-AI/aider) project by [Paul Gauthier](https://github.com/paul-gauthier). It incorporates advanced "Parity+" agentic infrastructure, including autonomous discovery, multi-agent delegation, and recursive verification loops.
+> **Note**: This is a specialized fork of the original [Aider](https://github.com/Aider-AI/aider) project by [Paul Gauthier](https://github.com/paul-gauthier). It incorporates advanced "Parity+" agentic infrastructure inspired by **Claude** and **Kimi**, including autonomous discovery, multi-agent delegation, and recursive verification loops.
 
 <p align="center">
 AI Pair Programming in Your Terminal

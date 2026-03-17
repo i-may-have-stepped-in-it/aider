@@ -188,7 +188,8 @@
       identification within third-party archives.
 
    Copyright 2023-2025 Paul Gauthier
-   Copyright 2026 OpenClaw Contributors (Derived Works)
+   Copyright 2026 OpenClaw Contributors (Autonomous Multi-Agent Enhancements)
+   Portions inspired by or in parity with architecture from Claude (Anthropic), Kimi (Moonshot AI), and Gemini (Google).
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
