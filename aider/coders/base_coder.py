@@ -9,6 +9,7 @@ import mimetypes
 import os
 import platform
 import re
+import string
 import sys
 import threading
 import time
@@ -46,11 +47,15 @@ from aider.reasoning_tags import (
 from aider.repo import ANY_GIT_ERROR, GitRepo
 from aider.repomap import RepoMap
 from aider.run_cmd import run_cmd
-from aider.utils import format_content, format_messages, format_tokens, is_image_file
+from aider.indexers.semantic import SemanticIndexer
+from aider.agents.loop import AutonomousAgent
+from aider.utils import format_content, format_messages, format_tokens, is_image_file, is_video_file, is_audio_file
 from aider.waiting import WaitingSpinner
+from aider.hooks import get_hooks_manager
 
 from ..dump import dump  # noqa: F401
 from .chat_chunks import ChatChunks
+from .chat_history import ChatHistory
 
 
 class UnknownEditFormat(ValueError):
@@ -83,6 +88,17 @@ all_fences = [
     wrap_fence("codeblock"),
     wrap_fence("sourcecode"),
 ]
+
+
+class SafeFormatter(string.Formatter):
+    def get_value(self, key, args, kwargs):
+        if isinstance(key, str):
+            try:
+                return kwargs[key]
+            except KeyError:
+                return "{" + key + "}"
+        else:
+            return super().get_value(key, args, kwargs)
 
 
 class Coder:
@@ -120,6 +136,46 @@ class Coder:
     chat_language = None
     commit_language = None
     file_watcher = None
+    system_prompt_override = None
+
+    @property
+    def done_messages(self):
+        if not hasattr(self, "chat_history"):
+            return []
+        return self.chat_history.done_messages
+
+    @done_messages.setter
+    def done_messages(self, value):
+        if not hasattr(self, "chat_history"):
+            self.chat_history = ChatHistory(done_messages=value)
+            return
+        self.chat_history.done_messages = value
+
+    @property
+    def cur_messages(self):
+        if not hasattr(self, "chat_history"):
+            return []
+        return self.chat_history.cur_messages
+
+    @cur_messages.setter
+    def cur_messages(self, value):
+        if not hasattr(self, "chat_history"):
+            self.chat_history = ChatHistory(cur_messages=value)
+            return
+        self.chat_history.cur_messages = value
+
+    @property
+    def summarizer(self):
+        if not hasattr(self, "chat_history"):
+            return None
+        return self.chat_history.summarizer
+
+    @summarizer.setter
+    def summarizer(self, value):
+        if not hasattr(self, "chat_history"):
+            self.chat_history = ChatHistory(summarizer=value)
+            return
+        self.chat_history.summarizer = value
 
     @classmethod
     def create(
@@ -180,6 +236,7 @@ class Coder:
                 total_tokens_sent=from_coder.total_tokens_sent,
                 total_tokens_received=from_coder.total_tokens_received,
                 file_watcher=from_coder.file_watcher,
+                system_prompt_override=from_coder.system_prompt_override,
             )
             use_kwargs.update(update)  # override to complete the switch
             use_kwargs.update(kwargs)  # override passed kwargs
@@ -289,6 +346,9 @@ class Coder:
         if self.done_messages:
             lines.append("Restored previous conversation history.")
 
+        if self.system_prompt_override:
+            lines.append("Custom system prompt: Active (use /system reset to clear)")
+
         if self.io.multiline_mode:
             lines.append("Multiline mode: Enabled. Enter inserts newline, Alt-Enter submits text")
 
@@ -338,9 +398,24 @@ class Coder:
         file_watcher=None,
         auto_copy_context=False,
         auto_accept_architect=True,
+        use_semantic_index=False,
+        system_prompt_override=None,
     ):
         # Fill in a dummy Analytics if needed, but it is never .enable()'d
         self.analytics = analytics if analytics is not None else Analytics()
+
+        self.system_prompt_override = system_prompt_override
+
+        self.use_semantic_index = use_semantic_index
+        self.semantic_indexer = None
+            
+        from aider.a2a.bus import A2AMessageBus
+        self.a2a_bus = A2AMessageBus()
+        
+        from aider.skills.registry import get_registry
+        self.skills_registry = get_registry()
+        
+        self.autonomous_agent = AutonomousAgent(self, max_turns=5, max_cost=2.0)
 
         self.event = self.analytics.event
         self.chat_language = chat_language
@@ -392,19 +467,9 @@ class Coder:
         self.abs_read_only_fnames = set()
         self.add_gitignore_files = add_gitignore_files
 
-        if cur_messages:
-            self.cur_messages = cur_messages
-        else:
-            self.cur_messages = []
-
-        if done_messages:
-            self.done_messages = done_messages
-        else:
-            self.done_messages = []
-
+        self.dry_run = dry_run
         self.io = io
-
-        self.shell_commands = []
+        self.pretty = self.io.pretty
 
         if not auto_commits:
             dirty_commits = False
@@ -412,10 +477,18 @@ class Coder:
         self.auto_commits = auto_commits
         self.dirty_commits = dirty_commits
 
-        self.dry_run = dry_run
-        self.pretty = self.io.pretty
-
         self.main_model = main_model
+
+        # Initialize ChatHistory
+        self.chat_history = ChatHistory(
+            summarizer=summarizer or ChatSummary(
+                [self.main_model.weak_model, self.main_model],
+                self.main_model.max_chat_history_tokens,
+            ),
+            done_messages=done_messages,
+            cur_messages=cur_messages,
+        )
+
         # Set the reasoning tag name based on model settings or default
         self.reasoning_tag_name = (
             self.main_model.reasoning_tag if self.main_model.reasoning_tag else REASONING_TAG
@@ -475,6 +548,14 @@ class Coder:
         if not self.repo:
             self.root = utils.find_common_root(self.abs_fnames)
 
+        if self.use_semantic_index:
+            self.semantic_indexer = SemanticIndexer(self.root)
+            # PARITY+: Proactively update index on startup
+            if self.repo:
+                self.io.tool_output("Updating semantic index...")
+                files = self.repo.get_all_relative_files()
+                self.semantic_indexer.update_index(files)
+
         if read_only_fnames:
             self.abs_read_only_fnames = set()
             for fname in read_only_fnames:
@@ -507,19 +588,14 @@ class Coder:
                 refresh=map_refresh,
             )
 
-        self.summarizer = summarizer or ChatSummary(
-            [self.main_model.weak_model, self.main_model],
-            self.main_model.max_chat_history_tokens,
-        )
-
         self.summarizer_thread = None
         self.summarized_done_messages = []
         self.summarizing_messages = None
 
-        if not self.done_messages and restore_chat_history:
+        if not self.chat_history.done_messages and restore_chat_history:
             history_md = self.io.read_text(self.io.chat_history_file)
             if history_md:
-                self.done_messages = utils.split_chat_history_markdown(history_md)
+                self.chat_history.done_messages = utils.split_chat_history_markdown(history_md)
                 self.summarize_start()
 
         # Linting and testing
@@ -819,15 +895,40 @@ class Coder:
         supports_pdfs = self.main_model.info.get("supports_pdf_input") or self.main_model.info.get(
             "max_pdf_size_mb"
         )
+        supports_video = self.main_model.info.get("supports_video_input")
+        supports_audio = self.main_model.info.get("supports_audio_input")
 
         # https://github.com/BerriAI/litellm/pull/6928
         supports_pdfs = supports_pdfs or "claude-3-5-sonnet-20241022" in self.main_model.name
 
-        if not (supports_images or supports_pdfs):
+        if not (supports_images or supports_pdfs or supports_video or supports_audio):
             return None
 
-        image_messages = []
+        multimodal_messages = []
         for fname in fnames:
+            rel_fname = self.get_rel_fname(fname)
+            
+            if is_video_file(fname) and supports_video:
+                frames = self.io.read_video(fname)
+                if frames:
+                    multimodal_messages += [{"type": "text", "text": f"Video file (frames): {rel_fname}"}]
+                    for frame_base64 in frames:
+                        multimodal_messages += [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}}
+                        ]
+                continue
+
+            if is_audio_file(fname) and supports_audio:
+                audio_base64 = self.io.read_audio(fname)
+                if audio_base64:
+                    mime_type, _ = mimetypes.guess_type(fname)
+                    audio_format = mime_type.split('/')[-1] if mime_type else "wav"
+                    multimodal_messages += [
+                        {"type": "text", "text": f"Audio file: {rel_fname}"},
+                        {"type": "input_audio", "input_audio": {"data": audio_base64, "format": audio_format}}
+                    ]
+                continue
+
             if not is_image_file(fname):
                 continue
 
@@ -838,28 +939,52 @@ class Coder:
             with open(fname, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
             image_url = f"data:{mime_type};base64,{encoded_string}"
-            rel_fname = self.get_rel_fname(fname)
 
             if mime_type.startswith("image/") and supports_images:
-                image_messages += [
+                multimodal_messages += [
                     {"type": "text", "text": f"Image file: {rel_fname}"},
                     {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}},
                 ]
             elif mime_type == "application/pdf" and supports_pdfs:
-                image_messages += [
+                multimodal_messages += [
                     {"type": "text", "text": f"PDF file: {rel_fname}"},
                     {"type": "image_url", "image_url": image_url},
                 ]
 
-        if not image_messages:
+        if not multimodal_messages:
             return None
 
-        return {"role": "user", "content": image_messages}
+        return {"role": "user", "content": multimodal_messages}
 
     def run_stream(self, user_message):
         self.io.user_input(user_message)
         self.init_before_message()
+        
+        # Execute pre-send hooks
+        hooks = get_hooks_manager()
+        if hooks:
+            try:
+                pre_result = hooks.execute("pre_send", message=user_message, coder=self)
+                if pre_result.get("data", {}).get("message") is not None:
+                    user_message = pre_result["data"]["message"]
+            except Exception as e:
+                if hooks.verbose:
+                    self.io.tool_error(f"Hook error (pre_send): {e}")
+        
         yield from self.send_message(user_message)
+        
+        # Execute post-send hooks
+        if hooks:
+            try:
+                hooks.execute(
+                    "post_send",
+                    message=user_message,
+                    response=self.partial_response_content,
+                    coder=self,
+                )
+            except Exception as e:
+                if hooks.verbose:
+                    self.io.tool_error(f"Hook error (post_send): {e}")
 
     def init_before_message(self):
         self.aider_edited_files = set()
@@ -934,6 +1059,24 @@ class Coder:
             list(self.send_message(message))
 
             if not self.reflected_message:
+                # After message is complete, check for artifacts (Claude Parity)
+                last_assistant_msg = self.done_messages[-1] if self.done_messages else None
+                if last_assistant_msg and last_assistant_msg.get("role") == "assistant":
+                    content = last_assistant_msg.get("content", "")
+                    if "```mermaid" in content or "```html" in content or "```svg" in content:
+                        import threading
+                        import asyncio
+                        
+                        def run_preview():
+                            try:
+                                preview_skill = self.skills_registry.create("artifact-preview", self)
+                                if preview_skill:
+                                    asyncio.run(preview_skill.execute(content))
+                            except Exception as e:
+                                self.io.tool_error(f"Artifact preview failed: {e}")
+                        
+                        # Run in background to avoid blocking the UI thread
+                        threading.Thread(target=run_preview, daemon=True).start()
                 break
 
             if self.num_reflections >= self.max_reflections:
@@ -1007,6 +1150,15 @@ class Coder:
 
         if self.verbose:
             self.io.tool_output("Starting to summarize chat history.")
+        
+        # Execute pre-summarize hooks
+        hooks = get_hooks_manager()
+        if hooks:
+            try:
+                hooks.execute("pre_summarize", messages=self.done_messages, coder=self)
+            except Exception as e:
+                if hooks.verbose:
+                    self.io.tool_error(f"Hook error (pre_summarize): {e}")
 
         self.summarizer_thread = threading.Thread(target=self.summarize_worker)
         self.summarizer_thread.start()
@@ -1020,6 +1172,20 @@ class Coder:
 
         if self.verbose:
             self.io.tool_output("Finished summarizing chat history.")
+        
+        # Execute post-summarize hooks
+        hooks = get_hooks_manager()
+        if hooks:
+            try:
+                hooks.execute(
+                    "post_summarize",
+                    original_messages=self.summarizing_messages,
+                    summary=self.summarized_done_messages,
+                    coder=self,
+                )
+            except Exception as e:
+                if hooks.verbose:
+                    self.io.tool_error(f"Hook error (post_summarize): {e}")
 
     def summarize_end(self):
         if self.summarizer_thread is None:
@@ -1171,6 +1337,23 @@ class Coder:
 
         return platform_text
 
+    def get_project_instructions(self):
+        """
+        Load project-specific instructions from standard files.
+        Parity with .cursorrules and Cursor/Windsurf project rules.
+        """
+        rule_files = [".aider.instructions.md", ".cursorrules", ".aider.rules.md", ".aider.rules"]
+        for rule_file in rule_files:
+            path = Path(self.root) / rule_file
+            if path.exists():
+                try:
+                    content = self.io.read_text(path)
+                    if content:
+                        return f"\nPROJECT RULES ({rule_file}):\n{content}\n"
+                except Exception:
+                    pass
+        return ""
+
     def fmt_system_prompt(self, prompt):
         final_reminders = []
         if self.main_model.lazy:
@@ -1209,7 +1392,9 @@ class Coder:
 
         final_reminders = "\n\n".join(final_reminders)
 
-        prompt = prompt.format(
+        formatter = SafeFormatter()
+        prompt = formatter.format(
+            prompt,
             fence=self.fence,
             quad_backtick_reminder=quad_backtick_reminder,
             final_reminders=final_reminders,
@@ -1219,13 +1404,15 @@ class Coder:
             shell_cmd_reminder=shell_cmd_reminder,
             go_ahead_tip=self.gpt_prompts.go_ahead_tip,
             language=language,
+            project_rules=self.get_project_instructions(),
         )
 
         return prompt
 
     def format_chat_chunks(self):
         self.choose_fence()
-        main_sys = self.fmt_system_prompt(self.gpt_prompts.main_system)
+        prompt_source = self.system_prompt_override or self.gpt_prompts.main_system
+        main_sys = self.fmt_system_prompt(prompt_source)
         if self.main_model.system_prompt_prefix:
             main_sys = self.main_model.system_prompt_prefix + "\n" + main_sys
 
@@ -1258,7 +1445,7 @@ class Coder:
                     dict(role="assistant", content="Ok."),
                 ]
 
-        if self.gpt_prompts.system_reminder:
+        if self.gpt_prompts.system_reminder and not self.system_prompt_override:
             main_sys += "\n" + self.fmt_system_prompt(self.gpt_prompts.system_reminder)
 
         chunks = ChatChunks()
@@ -1282,7 +1469,7 @@ class Coder:
         chunks.readonly_files = self.get_readonly_files_messages()
         chunks.chat_files = self.get_chat_files_messages()
 
-        if self.gpt_prompts.system_reminder:
+        if self.gpt_prompts.system_reminder and not self.system_prompt_override:
             reminder_message = [
                 dict(
                     role="system", content=self.fmt_system_prompt(self.gpt_prompts.system_reminder)
@@ -1316,6 +1503,7 @@ class Coder:
             not max_input_tokens
             or total_tokens < max_input_tokens
             and self.gpt_prompts.system_reminder
+            and not self.system_prompt_override
         ):
             if self.main_model.reminder == "sys":
                 chunks.reminder = reminder_message
@@ -2298,6 +2486,18 @@ class Coder:
         try:
             edits = self.get_edits()
             edits = self.apply_edits_dry_run(edits)
+            
+            # Execute pre-edit hooks
+            hooks = get_hooks_manager()
+            if hooks:
+                try:
+                    pre_result = hooks.execute("pre_edit", edits=edits, coder=self)
+                    if pre_result.get("data", {}).get("edits") is not None:
+                        edits = pre_result["data"]["edits"]
+                except Exception as e:
+                    if hooks.verbose:
+                        self.io.tool_error(f"Hook error (pre_edit): {e}")
+            
             edits = self.prepare_to_edit(edits)
             edited = set(edit[0] for edit in edits)
 
@@ -2312,7 +2512,13 @@ class Coder:
             self.io.tool_output()
             self.io.tool_output(str(err))
 
-            self.reflected_message = str(err)
+            self.reflected_message = (
+                f"The LLM did not conform to the edit format: {str(err)}\n"
+                "To fix this, please provide the complete updated content for each file "
+                "that needs changes, using the required format exactly as specified. "
+                "DO NOT provide examples of the format or conversational confirmation. "
+                "JUST provide the actual file listings for the changes I requested."
+            )
             return edited
 
         except ANY_GIT_ERROR as err:
@@ -2332,6 +2538,14 @@ class Coder:
                 self.io.tool_output(f"Did not apply edit to {path} (--dry-run)")
             else:
                 self.io.tool_output(f"Applied edit to {path}")
+        
+        # Execute post-edit hooks
+        if hooks:
+            try:
+                hooks.execute("post_edit", edited_files=edited, coder=self)
+            except Exception as e:
+                if hooks.verbose:
+                    self.io.tool_error(f"Hook error (post_edit): {e}")
 
         return edited
 

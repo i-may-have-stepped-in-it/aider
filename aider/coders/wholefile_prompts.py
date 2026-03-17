@@ -6,6 +6,7 @@ from .base_prompts import CoderPrompts
 class WholeFilePrompts(CoderPrompts):
     main_system = """Act as an expert software developer.
 Take requests for changes to the supplied code.
+{project_rules}
 If the request is ambiguous, ask questions.
 {final_reminders}
 Once you understand the request you MUST:

@@ -1,3 +1,11 @@
+- name: openai/chat
+  edit_format: architect
+  weak_model_name: "@speed"
+  use_repo_map: true
+  lazy: true
+  reminder: sys
+  examples_as_sys_msg: true
+
 - name: gpt-3.5-turbo
   weak_model_name: gpt-4o-mini
   reminder: sys
@@ -522,28 +530,49 @@
 - name: gemini/gemini-1.5-pro-002
   edit_format: diff
   use_repo_map: true
+  cache_control: true
+  extra_params:
+    max_tokens: 8192
 
 - name: gemini/gemini-1.5-flash-002
+  cache_control: true
+  extra_params:
+    max_tokens: 8192
 
 - name: gemini/gemini-1.5-pro
   edit_format: diff-fenced
   use_repo_map: true
+  cache_control: true
+  extra_params:
+    max_tokens: 8192
 
 - name: gemini/gemini-1.5-pro-latest
   edit_format: diff-fenced
   use_repo_map: true
+  cache_control: true
+  extra_params:
+    max_tokens: 8192
 
 - name: gemini/gemini-exp-1206
   edit_format: diff
   use_repo_map: true
+  cache_control: true
+  extra_params:
+    max_tokens: 8192
 
 - name: gemini/gemini-2.0-flash-exp
   edit_format: diff
   use_repo_map: true
+  cache_control: true
+  extra_params:
+    max_tokens: 8192
 
 - name: gemini/gemini-2.0-flash
   edit_format: diff
   use_repo_map: true
+  cache_control: true
+  extra_params:
+    max_tokens: 8192
 
 - name: openrouter/deepseek/deepseek-r1
   edit_format: diff

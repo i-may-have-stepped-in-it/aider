@@ -2,6 +2,8 @@
 
 import re
 import sys
+import tempfile
+import urllib.parse
 
 import pypandoc
 
@@ -74,6 +76,130 @@ See {urls.enable_playwright} for more info.
         return
 
     return True
+
+
+class InteractiveBrowser:
+    """
+    Persistent browser session for multi-step interactions.
+    Enables 'Computer Use' parity with Claude 3.5 Sonnet.
+    """
+    _instance = None
+
+    def __init__(self, verify_ssl=True):
+        self.verify_ssl = verify_ssl
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
+
+    @classmethod
+    def get_instance(cls, verify_ssl=True):
+        if cls._instance is None:
+            cls._instance = cls(verify_ssl=verify_ssl)
+        return cls._instance
+
+    def _ensure_browser(self):
+        from playwright.sync_api import sync_playwright
+        if not self.playwright:
+            self.playwright = sync_playwright().start()
+            self.browser = self.playwright.chromium.launch(headless=True)
+            self.context = self.browser.new_context(ignore_https_errors=not self.verify_ssl)
+            self.page = self.context.new_page()
+
+    def navigate(self, url):
+        self._ensure_browser()
+        self.page.goto(url, wait_until="networkidle")
+        return self.page.content()
+
+    def click(self, selector):
+        self._ensure_browser()
+        self.page.click(selector)
+        self.page.wait_for_load_state("networkidle")
+        return self.page.content()
+
+    def type(self, selector, text):
+        self._ensure_browser()
+        self.page.fill(selector, text)
+        return self.page.content()
+
+    def screenshot(self, path=None):
+        self._ensure_browser()
+        if not path:
+            path = tempfile.mktemp(suffix=".png")
+        self.page.screenshot(path=path)
+        return path
+
+    def shutdown(self):
+        if self.browser:
+            self.browser.close()
+        if self.playwright:
+            self.playwright.stop()
+        InteractiveBrowser._instance = None
+
+
+class DocCrawler:
+    """
+    Recursive documentation crawler for semantic indexing.
+    Parity with Cursor's '@docs' feature.
+    """
+    def __init__(self, base_url, max_pages=50, max_depth=3):
+        self.base_url = base_url.rstrip("/")
+        self.domain = urllib.parse.urlparse(base_url).netloc
+        self.max_pages = max_pages
+        self.max_depth = max_depth
+        self.visited = set()
+        self.queue = [(base_url, 0)]
+        self.scraper = Scraper()
+
+    def crawl(self):
+        """Crawl the site and yield (url, markdown_content)."""
+        pages_crawled = 0
+        while self.queue and pages_crawled < self.max_pages:
+            url, depth = self.queue.pop(0)
+            if url in self.visited or depth > self.max_depth:
+                continue
+            
+            self.visited.add(url)
+            pages_crawled += 1
+            
+            try:
+                content = self.scraper.scrape(url)
+                if not content:
+                    continue
+                
+                yield url, content
+                
+                # Extract links for further crawling
+                if depth < self.max_depth:
+                    links = self._extract_links(url)
+                    for link in links:
+                        if link not in self.visited:
+                            self.queue.append((link, depth + 1))
+            except Exception:
+                continue
+
+    def _extract_links(self, url):
+        """Extract same-domain links from a page."""
+        import httpx
+        from bs4 import BeautifulSoup
+        
+        links = []
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                resp = client.get(url)
+                if resp.status_code != 200:
+                    return []
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for a in soup.find_all("a", href=True):
+                    href = a["href"]
+                    full_url = urllib.parse.urljoin(url, href)
+                    # Stay on same domain and avoid fragments
+                    parsed = urllib.parse.urlparse(full_url)
+                    if parsed.netloc == self.domain and not parsed.fragment:
+                        links.append(full_url.split("#")[0])
+        except Exception:
+            pass
+        return list(set(links))
 
 
 class Scraper:
@@ -194,7 +320,7 @@ class Scraper:
     def scrape_with_httpx(self, url):
         import httpx
 
-        headers = {"User-Agent": f"Mozilla./5.0 ({aider_user_agent})"}
+        headers = {"User-Agent": f"Mozilla/5.0 ({aider_user_agent})"}
         try:
             with httpx.Client(
                 headers=headers, verify=self.verify_ssl, follow_redirects=True

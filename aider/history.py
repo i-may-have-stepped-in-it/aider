@@ -135,7 +135,8 @@ def main():
     with open(args.filename, "r") as f:
         text = f.read()
 
-    summary = summarizer.summarize_chat_history_markdown(text)
+    messages = [{"role": "user", "content": text}]
+    summary = summarizer.summarize_all(messages)
     dump(summary)
 
 

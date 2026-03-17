@@ -142,10 +142,21 @@ class TestOnboarding(unittest.TestCase):
     @patch.dict(
         os.environ, {"OPENROUTER_API_KEY": "or_key", "OPENAI_API_KEY": "oa_key"}, clear=True
     )
-    def test_try_select_default_model_priority_openrouter(self, mock_check_tier):
-        """Test OpenRouter key takes priority."""
-        self.assertEqual(try_to_select_default_model(), "openrouter/anthropic/claude-sonnet-4")
-        mock_check_tier.assert_called_once_with("or_key")
+    def test_try_select_default_model_priority_openai(self, mock_check_tier):
+        """Test OpenAI key takes priority over OpenRouter."""
+        self.assertEqual(try_to_select_default_model(), "gpt-4o")
+        mock_check_tier.assert_not_called()
+
+    @patch("aider.onboarding.check_openrouter_tier")
+    @patch.dict(
+        os.environ,
+        {"OPENROUTER_API_KEY": "or_key", "OPENAI_API_BASE": "http://localhost:8000/v1"},
+        clear=True,
+    )
+    def test_try_select_default_model_priority_openai_base(self, mock_check_tier):
+        """Test OpenAI base takes priority over OpenRouter."""
+        self.assertEqual(try_to_select_default_model(), "gpt-4o")
+        mock_check_tier.assert_not_called()
 
     @patch("aider.onboarding.check_openrouter_tier")
     @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "an_key", "OPENAI_API_KEY": "oa_key"}, clear=True)

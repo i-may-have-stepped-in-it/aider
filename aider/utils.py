@@ -11,6 +11,8 @@ from aider.dump import dump  # noqa: F401
 from aider.waiting import Spinner
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp", ".pdf"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".flac"}
 
 
 class IgnorantTemporaryDirectory:
@@ -91,6 +93,36 @@ def is_image_file(file_name):
     """
     file_name = str(file_name)  # Convert file_name to string
     return any(file_name.endswith(ext) for ext in IMAGE_EXTENSIONS)
+
+
+def is_video_file(file_name):
+    """Check if the given file name is a video file."""
+    file_name = str(file_name)
+    return any(file_name.lower().endswith(ext) for ext in VIDEO_EXTENSIONS)
+
+
+def is_audio_file(file_name):
+    """Check if the given file name is an audio file."""
+    file_name = str(file_name)
+    return any(file_name.lower().endswith(ext) for ext in AUDIO_EXTENSIONS)
+
+
+def validate_multimodal_file(fname, model):
+    """
+    Validate if a file is a supported multimodal type for the given model.
+    Returns (True, None) if valid, or (False, error_message).
+    """
+    if is_image_file(fname):
+        if not model.info.get("supports_vision"):
+            return False, f"Model {model.name} does not support images."
+    elif is_video_file(fname):
+        if not model.info.get("supports_video_input"):
+            return False, f"Model {model.name} does not support video."
+    elif is_audio_file(fname):
+        if not model.info.get("supports_audio_input"):
+            return False, f"Model {model.name} does not support audio."
+    
+    return True, None
 
 
 def safe_abs_path(res):

@@ -44,22 +44,17 @@ def check_openrouter_tier(api_key):
 def try_to_select_default_model():
     """
     Attempts to select a default model based on available API keys.
-    Checks OpenRouter tier status to select appropriate model.
+    Checks OpenRouter tier status if no other keys are found.
 
     Returns:
         The name of the selected model, or None if no suitable default is found.
     """
-    # Special handling for OpenRouter
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-    if openrouter_key:
-        # Check if the user is on a free tier
-        is_free_tier = check_openrouter_tier(openrouter_key)
-        if is_free_tier:
-            return "openrouter/deepseek/deepseek-r1:free"
-        else:
-            return "openrouter/anthropic/claude-sonnet-4"
+    # If OPENAI_API_BASE is set, it's a strong indicator of an OpenAI-compatible endpoint.
+    if os.environ.get("OPENAI_API_BASE"):
+        # Return gpt-4o as default for generic OpenAI endpoints
+        return "gpt-4o"
 
-    # Select model based on other available API keys
+    # Select model based on available API keys
     model_key_pairs = [
         ("ANTHROPIC_API_KEY", "sonnet"),
         ("DEEPSEEK_API_KEY", "deepseek"),
@@ -72,6 +67,16 @@ def try_to_select_default_model():
         api_key_value = os.environ.get(env_key)
         if api_key_value:
             return model_name
+
+    # Finally, fallback to OpenRouter
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    if openrouter_key:
+        # Check if the user is on a free tier
+        is_free_tier = check_openrouter_tier(openrouter_key)
+        if is_free_tier:
+            return "openrouter/deepseek/deepseek-r1:free"
+        else:
+            return "openrouter/anthropic/claude-sonnet-4"
 
     return None
 

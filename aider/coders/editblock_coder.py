@@ -180,7 +180,6 @@ def replace_most_similar_chunk(whole, part, replace):
     except ValueError:
         pass
 
-    return
     # Try fuzzy matching
     res = replace_closest_edit_distance(whole_lines, part, part_lines, replace_lines)
     if res:

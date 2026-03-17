@@ -2,7 +2,7 @@ import os
 import platform
 import subprocess
 import sys
-from io import BytesIO
+from io import StringIO
 
 import pexpect
 import psutil
@@ -97,7 +97,7 @@ def run_cmd_pexpect(command, verbose=False, cwd=None):
     if verbose:
         print("Using run_cmd_pexpect:", command)
 
-    output = BytesIO()
+    output = StringIO()
 
     def output_callback(b):
         output.write(b)
@@ -125,7 +125,7 @@ def run_cmd_pexpect(command, verbose=False, cwd=None):
 
         # Wait for the command to finish and get the exit status
         child.close()
-        return child.exitstatus, output.getvalue().decode("utf-8", errors="replace")
+        return child.exitstatus, output.getvalue()
 
     except (pexpect.ExceptionPexpect, TypeError, ValueError) as e:
         error_msg = f"Error running command {command}: {e}"

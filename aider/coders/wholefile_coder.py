@@ -53,23 +53,57 @@ class WholeFileCoder(Coder):
 
                 # fname==None ... starting a new block
                 if i > 0:
-                    fname_source = "block"
-                    fname = lines[i - 1].strip()
-                    fname = fname.strip("*")  # handle **filename.py**
-                    fname = fname.rstrip(":")
-                    fname = fname.strip("`")
-                    fname = fname.lstrip("#")
-                    fname = fname.strip()
+                    # Search back up to 3 lines for a filename that matches chat_files
+                    for j in range(1, 4):
+                        if i - j < 0:
+                            break
 
-                    # Issue #1232
-                    if len(fname) > 250:
-                        fname = ""
+                        candidate = lines[i - j].strip()
+                        candidate = candidate.strip("*")  # handle **filename.py**
+                        candidate = candidate.rstrip(":")
+                        candidate = candidate.strip("`")
+                        candidate = candidate.lstrip("#")
+                        candidate = candidate.strip()
 
-                    # Did gpt prepend a bogus dir? It especially likes to
-                    # include the path/to prefix from the one-shot example in
-                    # the prompt.
-                    if fname and fname not in chat_files and Path(fname).name in chat_files:
-                        fname = Path(fname).name
+                        if not candidate or len(candidate) > 250:
+                            continue
+
+                        # Did gpt prepend a bogus dir?
+                        if (
+                            candidate not in chat_files
+                            and Path(candidate).name in chat_files
+                        ):
+                            candidate = Path(candidate).name
+
+                        if candidate in chat_files:
+                            fname = candidate
+                            fname_source = "block"
+                            break
+
+                    # Ignore common placeholder filenames used in examples
+                    placeholders = ["path/to/filename.ext", "path/to/file.ext", "filename.ext"]
+                    if not fname or any(p in fname.lower() for p in placeholders):
+                        # If it's a placeholder, don't treat it as a valid filename for a block
+                        if not fname or fname.lower() in placeholders or "path/to/" in fname.lower():
+                            fname = None
+
+                    # If no match found in chat_files,
+                    # fall back to the line immediately preceding the block
+                    if not fname:
+                        candidate = lines[i - 1].strip()
+                        candidate = candidate.strip("*").rstrip(":").strip("`").lstrip("#").strip()
+                        if candidate and len(candidate) <= 250:
+                            # Only use it if it's in chat_files, or it's clearly a filename (no spaces)
+                            if candidate in chat_files or " " not in candidate:
+                                fname = candidate
+                                fname_source = "block"
+                                # Did gpt prepend a bogus dir?
+                                if (
+                                    fname not in chat_files
+                                    and Path(fname).name in chat_files
+                                ):
+                                    fname = Path(fname).name
+
                 if not fname:  # blank line? or ``` was on first line i==0
                     if saw_fname:
                         fname = saw_fname
@@ -78,10 +112,15 @@ class WholeFileCoder(Coder):
                         fname = chat_files[0]
                         fname_source = "chat"
                     else:
-                        # TODO: sense which file it is by diff size
-                        raise ValueError(
-                            f"No filename provided before {self.fence[0]} in file listing"
+                        # If no filename found, ignore the block instead of raising ValueError.
+                        # This prevents reflection loops on conversational snippets.
+                        self.io.tool_output(
+                            f"Skipping code block: No filename provided before {self.fence[0]}"
                         )
+                        fname = None
+                        fname_source = None
+                        new_lines = []
+                        continue
 
             elif fname is not None:
                 new_lines.append(line)

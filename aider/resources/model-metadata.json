@@ -710,6 +710,19 @@
     },
   "together_ai/Qwen/Qwen3-235B-A22B-fp8-tput": {
         "input_cost_per_token": 0.0000002,
-        "output_cost_per_token": 0.0000006,
+        "output_cost_per_token": 0.0000006
+  },
+  "openai/chat": {
+        "max_tokens": 128000,
+        "max_input_tokens": 128000,
+        "max_output_tokens": 128000,
+        "input_cost_per_token": 0.000001,
+        "output_cost_per_token": 0.000003,
+        "litellm_provider": "openai",
+        "mode": "chat",
+        "supports_system_messages": true,
+        "supports_function_calling": true,
+        "supports_tool_choice": true,
+        "supports_assistant_prefill": true
   }
 }

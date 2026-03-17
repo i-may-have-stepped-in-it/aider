@@ -180,7 +180,10 @@ def lint_python_compile(fname, code):
         return
     except Exception as err:
         end_lineno = getattr(err, "end_lineno", err.lineno)
-        line_numbers = list(range(err.lineno - 1, end_lineno))
+        if err.lineno is None:
+            line_numbers = []
+        else:
+            line_numbers = list(range(err.lineno - 1, end_lineno))
 
         tb_lines = traceback.format_exception(type(err), err, err.__traceback__)
         last_file_i = 0

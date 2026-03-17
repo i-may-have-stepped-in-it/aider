@@ -308,7 +308,7 @@ class GitRepo:
                     )
 
                 # Perform the commit
-                self.repo.git.commit(cmd)
+                self.repo.git.commit(*cmd)
                 commit_hash = self.get_head_commit_sha(short=True)
                 self.io.tool_output(f"Commit {commit_hash} {commit_message}", bold=True)
                 return commit_hash, commit_message

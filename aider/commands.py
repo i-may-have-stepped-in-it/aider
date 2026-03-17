@@ -22,7 +22,8 @@ from aider.llm import litellm
 from aider.repo import ANY_GIT_ERROR
 from aider.run_cmd import run_cmd
 from aider.scrape import Scraper, install_playwright
-from aider.utils import is_image_file
+from aider.utils import is_image_file, is_video_file, is_audio_file
+from aider.hooks import get_hooks_manager
 
 from .dump import dump  # noqa: F401
 
@@ -292,8 +293,32 @@ class Commands:
             self.io.tool_output(f"Error: Command {cmd_name} not found.")
             return
 
+        # Execute pre-command hooks
+        hooks = get_hooks_manager()
+        if hooks:
+            try:
+                pre_result = hooks.execute("pre_command", cmd_name=cmd_name, args=args, io=self.io)
+                # Hooks can modify args via return data
+                if pre_result.get("data", {}).get("args") is not None:
+                    args = pre_result["data"]["args"]
+            except Exception as e:
+                if hooks.verbose:
+                    self.io.tool_error(f"Hook error (pre_command): {e}")
+
         try:
-            return cmd_method(args)
+            result = cmd_method(args)
+            
+            # Execute post-command hooks
+            if hooks:
+                try:
+                    hooks.execute(
+                        "post_command", cmd_name=cmd_name, args=args, result=result, io=self.io
+                    )
+                except Exception as e:
+                    if hooks.verbose:
+                        self.io.tool_error(f"Hook error (post_command): {e}")
+            
+            return result
         except ANY_GIT_ERROR as err:
             self.io.tool_error(f"Unable to complete {cmd_name}: {err}")
 
@@ -885,14 +910,12 @@ class Commands:
                         f"Cannot add {matched_file} as it's not part of the repository"
                     )
             else:
-                if is_image_file(matched_file) and not self.coder.main_model.info.get(
-                    "supports_vision"
-                ):
-                    self.io.tool_error(
-                        f"Cannot add image file {matched_file} as the"
-                        f" {self.coder.main_model.name} does not support images."
-                    )
+                from aider.utils import validate_multimodal_file
+                is_valid, error = validate_multimodal_file(matched_file, self.coder.main_model)
+                if not is_valid:
+                    self.io.tool_error(error)
                     continue
+                
                 content = self.io.read_text(abs_file_path)
                 if content is None:
                     self.io.tool_error(f"Unable to read {matched_file}")
@@ -1009,6 +1032,44 @@ class Commands:
 
         self.io.tool_output(errors)
         return errors
+
+    def cmd_shell(self, args):
+        "Run an interactive shell (exit to return to aider)"
+        # Determine the shell to use
+        shell = os.environ.get("SHELL", "/bin/bash")
+        shell_name = os.path.basename(shell)
+        
+        self.io.tool_output(f"Spawning interactive {shell_name} shell. Type 'exit' to return to aider.")
+        self.io.tool_output("")
+        
+        # Prepare environment
+        env = dict(os.environ)
+        env["PS1"] = f"(aider-shell) $ "
+        env["PS2"] = "(aider-shell) > "
+        
+        # Handle optional command
+        if args.strip():
+            # Run a specific command in the shell
+            result = subprocess.run(
+                [shell, "-c", args],
+                cwd=self.coder.root,
+                env=env,
+                encoding=self.io.encoding,
+                errors="replace",
+            )
+        else:
+            # Interactive shell session
+            result = subprocess.run(
+                [shell],
+                cwd=self.coder.root,
+                env=env,
+                encoding=self.io.encoding,
+                errors="replace",
+            )
+        
+        self.io.tool_output("")
+        self.io.tool_output(f"Exited {shell_name} shell (exit code: {result.returncode})")
+        self.io.tool_output("Type a message to continue chatting with aider.")
 
     def cmd_run(self, args, add_on_nonzero_exit=False):
         "Run a shell command and optionally add the output to the chat (alias: !)"
@@ -1376,14 +1437,14 @@ class Commands:
                 self.io.tool_error(f"Not a file or directory: {abs_path}")
 
     def _add_read_only_file(self, abs_path, original_name):
-        if is_image_file(original_name) and not self.coder.main_model.info.get("supports_vision"):
-            self.io.tool_error(
-                f"Cannot add image file {original_name} as the"
-                f" {self.coder.main_model.name} does not support images."
-            )
+        from aider.utils import validate_multimodal_file
+        is_valid, error = validate_multimodal_file(original_name, self.coder.main_model)
+        if not is_valid:
+            self.io.tool_error(error)
             return
 
-        if abs_path in self.coder.abs_read_only_fnames:
+        if abs_path in self.coder.abs_fnames:
+
             self.io.tool_error(f"{original_name} is already in the chat as a read-only file")
             return
         elif abs_path in self.coder.abs_fnames:
@@ -1428,6 +1489,402 @@ class Commands:
         repo_map = self.coder.get_repo_map(force_refresh=True)
         if repo_map:
             self.io.tool_output("The repo map has been refreshed, use /map to view it.")
+
+    def cmd_system(self, args):
+        """Set a custom system prompt, load from file, or reset to default.
+        Usage:
+            /system "prompt"           Set system prompt (replaces default)
+            /system --append "text"    Append text to the default prompt
+            /system --prepend "text"   Prepend text to the default prompt
+            /system -f file            Load system prompt from file
+            /system reset              Reset to the default system prompt
+            /system view               Show the final rendered system prompt and variables
+        """
+        args = args.strip()
+        if not args:
+            if self.coder.system_prompt_override:
+                self.io.tool_output("Current custom system prompt:")
+                self.io.tool_output(self.coder.system_prompt_override)
+            else:
+                self.io.tool_output("Using default system prompt.")
+            return
+
+        if args == "view":
+            chunks = self.coder.format_chat_chunks()
+            self.io.tool_output("Final rendered system prompt:")
+            self.io.tool_output("---")
+            self.io.tool_output(chunks.system[0]["content"])
+            self.io.tool_output("---")
+            self.io.tool_output("\nAvailable Template Variables:")
+            self.io.tool_output("  {fence}, {quad_backtick_reminder}, {final_reminders},")
+            self.io.tool_output("  {platform}, {shell_cmd_prompt}, {rename_with_shell},")
+            self.io.tool_output("  {shell_cmd_reminder}, {go_ahead_tip}, {language}")
+            return
+
+        new_prompt = None
+        mode = "replace"
+
+        if args.startswith("--append "):
+            mode = "append"
+            args = args[len("--append ") :].strip()
+        elif args.startswith("--prepend "):
+            mode = "prepend"
+            args = args[len("--prepend ") :].strip()
+
+        if args == "reset":
+            new_prompt = None
+            self.io.tool_output("System prompt reset to default.")
+        elif args.startswith("-f ") or args.startswith("--file "):
+            filename = args.split(None, 1)[1]
+            try:
+                content = self.io.read_text(filename)
+                if content is None:
+                    self.io.tool_error(f"Unable to read file: {filename}")
+                    return
+                new_prompt = content
+                self.io.tool_output(f"Loaded system prompt from {filename}")
+            except Exception as e:
+                self.io.tool_error(f"Error reading system prompt from {filename}: {e}")
+                return
+        else:
+            # Handle quoted or unquoted string
+            if args.startswith('"') and args.endswith('"') and len(args) >= 2:
+                new_prompt = args[1:-1]
+            else:
+                new_prompt = args
+
+        if new_prompt and mode == "append":
+            new_prompt = self.coder.gpt_prompts.main_system + "\n\n" + new_prompt
+            self.io.tool_output("Appended to system prompt.")
+        elif new_prompt and mode == "prepend":
+            new_prompt = new_prompt + "\n\n" + self.coder.gpt_prompts.main_system
+            self.io.tool_output("Prepended to system prompt.")
+        elif new_prompt:
+            self.io.tool_output("System prompt updated (replaces default).")
+
+        raise SwitchCoder(system_prompt_override=new_prompt)
+
+    def cmd_search_web(self, args):
+        """Search the web for information via OpenClaw Gateway.
+        Usage: /search-web <query>
+        """
+        query = args.strip()
+        if not query:
+            self.io.tool_error("Please provide a search query.")
+            return
+
+        if not hasattr(self.coder, "tool_router"):
+            self.io.tool_error("Tool mode not available.")
+            return
+
+        self.io.tool_output(f"Searching the web via OpenClaw for: {query}...")
+        result = self.coder.tool_router.execute("search_web", {"query": query})
+        
+        if result.success:
+            self.io.tool_output(result.output)
+        else:
+            self.io.tool_error(f"Search failed: {result.error}")
+
+    def cmd_index(self, args):
+        """Index external directories or search the global semantic index.
+        Usage:
+            /index add <dir>    Index the specified directory (and its subdirs)
+            /index doc <url>    Crawl and index a documentation site
+            /index search <q>   Query the global index for information
+            /index status       Show status of the global index
+        """
+        from aider.indexers.semantic import SemanticIndexer
+        from aider.scrape import DocCrawler
+        
+        args = args.strip()
+        if not args:
+            self.io.tool_output("Use '/index add <dir>', '/index doc <url>', or '/index search <query>'")
+            return
+
+        indexer = SemanticIndexer.get_global()
+        
+        if args.startswith("add "):
+            # ... (existing add logic)
+            path_str = args[len("add ") :].strip()
+            path = Path(path_str).resolve()
+            if not path.exists() or not path.is_dir():
+                self.io.tool_error(f"Directory not found: {path_str}")
+                return
+            
+            self.io.tool_output(f"Indexing {path} (Global Index)...")
+            files = []
+            for root, _, fs in os.walk(path):
+                for f in fs:
+                    if f.endswith(('.py', '.js', '.ts', '.c', '.cpp', '.rs', '.go', '.md')):
+                        files.append(str(Path(root) / f))
+            
+            indexer.update_index(files)
+            self.io.tool_output(f"Indexed {len(files)} files.")
+
+        elif args.startswith("doc "):
+            self.io.tool_error("/index doc is currently disabled.")
+            return
+            # url = args[len("doc ") :].strip()
+            # self.io.tool_output(f"🔍 Crawling documentation: {url}...")
+            # crawler = DocCrawler(url)
+            # 
+            # count = 0
+            # for page_url, content in crawler.crawl():
+            #     self.io.tool_output(f"  - Indexed: {page_url}")
+            #     # We reuse update_index by passing a virtual filename or updating directly
+            #     # For this demo, we'll implement a simple content-indexing method
+            #     indexer.add_content(page_url, content)
+            #     count += 1
+            # 
+            # self.io.tool_output(f"✅ Success! Indexed {count} documentation pages.")
+            
+        elif args.startswith("search "):
+            query = args[len("search ") :].strip()
+            self.io.tool_output(f"Searching global index for: {query}...")
+            results = indexer.query(query)
+            if results:
+                self.io.tool_output("Matches found in global index:")
+                for path, score in results:
+                    self.io.tool_output(f"  [{score:.2f}] {path}")
+            else:
+                self.io.tool_output("No matches found.")
+        elif args == "status":
+            with sqlite3.connect(indexer.db_path) as conn:
+                count = conn.execute("SELECT COUNT(*) FROM file_cache").fetchone()[0]
+            self.io.tool_output(f"Global index contains {count} files.")
+        else:
+            self.io.tool_error(f"Unknown index action: {args}")
+
+    def cmd_mcp(self, args):
+        """Manage MCP (Model Context Protocol) servers.
+        Usage:
+            /mcp add <name> <cmd> [args...]    Add an MCP server
+            /mcp list                         List active MCP servers and tools
+            /mcp remove <name>                Remove an MCP server
+        """
+        args = args.strip()
+        if not args:
+            self.io.tool_output("Use '/mcp add', '/mcp list', or '/mcp remove'")
+            return
+
+        if not hasattr(self.coder, "tool_router") or not hasattr(self.coder.tool_router, "mcp_manager"):
+            self.io.tool_error("MCP support not available in this coder mode.")
+            return
+
+        manager = self.coder.tool_router.mcp_manager
+
+        if args.startswith("add "):
+            parts = args[4:].split()
+            if len(parts) < 2:
+                self.io.tool_error("Usage: /mcp add <name> <cmd> [args...]")
+                return
+            name = parts[0]
+            cmd = parts[1:]
+            self.io.tool_output(f"Starting MCP server '{name}'...")
+            if manager.add_server(name, cmd):
+                self.io.tool_output(f"MCP server '{name}' added successfully.")
+            else:
+                self.io.tool_error(f"Failed to start MCP server '{name}'.")
+        
+        elif args == "list":
+            if not manager.servers:
+                self.io.tool_output("No active MCP servers.")
+                return
+            for name, server in manager.servers.items():
+                self.io.tool_output(f"Server: {name} ({' '.join(server.command)})")
+                if server.tools:
+                    self.io.tool_output("  Tools:")
+                    for tool in server.tools:
+                        self.io.tool_output(f"    - {tool.name}: {tool.description}")
+                if server.resources:
+                    self.io.tool_output("  Resources:")
+                    for r in server.resources:
+                        self.io.tool_output(f"    - {r.name} ({r.uri})")
+                if server.prompts:
+                    self.io.tool_output("  Prompts:")
+                    for p in server.prompts:
+                        self.io.tool_output(f"    - {p.name}: {p.description}")
+        
+        elif args.startswith("resource "):
+            uri = args[9:].strip()
+            self.io.tool_output(f"Reading MCP resource: {uri}...")
+            try:
+                res = manager.read_resource(uri)
+                for item in res.get("contents", []):
+                    if "text" in item:
+                        self.io.tool_output(item["text"])
+                    else:
+                        self.io.tool_output(f"[Binary data: {item.get('mimeType')}]")
+            except Exception as e:
+                self.io.tool_error(f"Error reading resource: {e}")
+
+        elif args.startswith("remove "):
+            name = args[7:].strip()
+            if name in manager.servers:
+                manager.servers[name].stop()
+                del manager.servers[name]
+                self.io.tool_output(f"MCP server '{name}' removed.")
+            else:
+                self.io.tool_error(f"MCP server '{name}' not found.")
+        else:
+            self.io.tool_error(f"Unknown mcp action: {args}")
+
+    def cmd_auto(self, args):
+        """Execute a task autonomously until a test command passes.
+        Usage: /auto "task description" [--test "test command"] [--turns N]
+        """
+        import re
+        
+        # Parse arguments
+        task = None
+        test_cmd = None
+        turns = 5
+        
+        # Extract turns if present
+        turns_match = re.search(r'--turns\s+(\d+)', args)
+        if turns_match:
+            turns = int(turns_match.group(1))
+            args = re.sub(r'--turns\s+\d+', '', args)
+            
+        # Extract test command if present
+        test_match = re.search(r'--test\s+"([^"]+)"', args)
+        if test_match:
+            test_cmd = test_match.group(1)
+            args = re.sub(r'--test\s+"[^"]+"', '', args)
+        elif test_match := re.search(r"--test\s+'([^']+)'", args):
+            test_cmd = test_match.group(1)
+            args = re.sub(r"--test\s+'[^']+'", '', args)
+            
+        task = args.strip().strip('"').strip("'")
+        
+        if not task:
+            self.io.tool_output("Usage: /auto \"task description\" [--test \"test command\"]")
+            return
+
+        self.coder.autonomous_agent.max_turns = turns
+        self.coder.autonomous_agent.run_task(task, test_cmd)
+
+    def cmd_swarm(self, args):
+        """Solve a task using a collaborative swarm of agents.
+        Usage: /swarm "task description" [--agents "architect,developer,reviewer"]
+        """
+        import re
+        import asyncio
+        
+        # Parse arguments
+        task = None
+        agents_list = ["Architect", "Developer", "Reviewer"]
+        
+        # Extract agents if present
+        agents_match = re.search(r'--agents\s+"([^"]+)"', args)
+        if agents_match:
+            agents_list = [a.strip() for a in agents_match.group(1).split(',')]
+            args = re.sub(r'--agents\s+"[^"]+"', '', args)
+            
+        task = args.strip().strip('"').strip("'")
+        
+        if not task:
+            self.io.tool_output("Usage: /swarm \"task description\" [--agents \"arch,dev,test\"]")
+            return
+
+        swarm_skill = self.skills_registry.create("swarm", self.coder)
+        if swarm_skill:
+            asyncio.run(swarm_skill.execute(task, agents_list))
+
+    def cmd_watch(self, args):
+        """Monitor background processes or toggle background auto-fix.
+        Usage:
+            /watch start <name> <cmd>    Start a background process
+            /watch read <name> [lines]   Read the latest output
+            /watch input <name> <text>   Send input to stdin
+            /watch list                  List monitored processes
+            /watch stop <name>           Stop a process
+            /watch fix-on-save [on/off]  Toggle auto-fix on file save
+        """
+        args = args.strip()
+        if not args:
+            self.io.tool_output("Use '/watch start', '/watch read', '/watch list', or '/watch fix-on-save'")
+            return
+
+        if args.startswith("fix-on-save"):
+            if not self.io.file_watcher:
+                self.io.tool_error("File watcher not available.")
+                return
+            
+            sub = args[11:].strip()
+            if sub == "on":
+                self.io.file_watcher.fix_on_save = True
+            elif sub == "off":
+                self.io.file_watcher.fix_on_save = False
+            else:
+                self.io.file_watcher.fix_on_save = not self.io.file_watcher.fix_on_save
+            
+            status = "Enabled" if self.io.file_watcher.fix_on_save else "Disabled"
+            self.io.tool_output(f"Background auto-fix on save: {status}")
+            return
+
+        if not hasattr(self.coder, "tool_router") or not hasattr(self.coder.tool_router, "terminal_watcher"):
+            self.io.tool_error("Terminal watching not available in this coder mode.")
+            return
+
+        watcher = self.coder.tool_router.terminal_watcher
+
+        if args.startswith("start "):
+            parts = args[6:].split(None, 1)
+            if len(parts) < 2:
+                self.io.tool_error("Usage: /watch start <name> <cmd>")
+                return
+            name, cmd = parts
+            if watcher.start_process(name, cmd, self.coder.root):
+                self.io.tool_output(f"Started background process '{name}': {cmd}")
+            else:
+                self.io.tool_error(f"Failed to start process '{name}'")
+        
+        elif args.startswith("read "):
+            parts = args[5:].split()
+            name = parts[0]
+            lines = int(parts[1]) if len(parts) > 1 else 50
+            logs = watcher.get_logs(name, lines)
+            self.io.tool_output(f"--- Logs for '{name}' ---")
+            self.io.tool_output("\n".join(logs))
+            self.io.tool_output(f"--- End of logs ---")
+
+        elif args.startswith("input "):
+            parts = args[6:].split(None, 1)
+            if len(parts) < 2:
+                self.io.tool_error("Usage: /watch input <name> <text>")
+                return
+            name, text = parts
+            if watcher.send_input(name, text):
+                self.io.tool_output(f"Sent input to '{name}'.")
+            else:
+                self.io.tool_error(f"Failed to send input to '{name}' (is it running?)")
+
+        elif args.startswith("signal "):
+            parts = args[7:].split()
+            if len(parts) < 2:
+                self.io.tool_error("Usage: /watch signal <name> <signal_number>")
+                return
+            name, sig = parts
+            if watcher.send_signal(name, int(sig)):
+                self.io.tool_output(f"Sent signal {sig} to '{name}'.")
+            else:
+                self.io.tool_error(f"Failed to send signal to '{name}' (is it running?)")
+            
+        elif args == "list":
+            if not watcher.processes:
+                self.io.tool_output("No active background processes.")
+                return
+            for name, proc in watcher.processes.items():
+                status = "Running" if proc.running else "Stopped"
+                self.io.tool_output(f"- {name}: {status} ({' '.join(proc.command)})")
+        
+        elif args.startswith("stop "):
+            name = args[5:].strip()
+            watcher.stop_process(name)
+            self.io.tool_output(f"Stopped process '{name}'.")
+        else:
+            self.io.tool_error(f"Unknown watch action: {args}")
 
     def cmd_settings(self, args):
         "Print out the current settings"
@@ -1635,6 +2092,106 @@ class Commands:
         announcements = "\n".join(self.coder.get_announcements())
         self.io.tool_output(announcements)
 
+    def cmd_auto(self, args):
+        """
+        Toggle autonomous tool execution mode.
+        
+        In auto mode, the LLM can execute tools without asking for confirmation
+        for each call. Safety limits (cost, iteration count) still apply.
+        
+        Usage:
+            /auto on          Enable autonomous mode
+            /auto off         Disable autonomous mode (confirm each tool)
+            /auto             Show current status
+            /auto --limit 20  Set max 20 tool calls
+            /auto --cost 2.0  Set $2 cost limit
+            /auto --safe      Only auto-confirm SAFE tools
+        
+        Examples:
+            /auto on
+            /auto --limit 10 --cost 1.0
+        
+        Safety:
+            Even in auto mode, these limits are enforced:
+            - max_tool_calls: Maximum number of tool executions (default: 50)
+            - max_tool_cost: Maximum cost in dollars (default: $5)
+            - Sandbox: Shell commands run in firejail/unshare sandbox
+        """
+        if not hasattr(self.coder, 'tool_router'):
+            self.io.tool_error(
+                "Tool mode not available. "
+                "Use --edit-format tool or /chat-mode tool to enable."
+            )
+            return
+        
+        args = args.strip()
+        
+        # Parse arguments
+        show_status = True
+        i = 0
+        parts = args.split()
+        
+        while i < len(parts):
+            arg = parts[i]
+            
+            if arg == "on":
+                self.coder.auto_confirm_tools = True
+                self.coder.tool_router.auto_confirm = True
+                self.io.tool_output("Auto mode enabled - tools will execute without confirmation")
+                show_status = False
+                
+            elif arg == "off":
+                self.coder.auto_confirm_tools = False
+                self.coder.tool_router.auto_confirm = False
+                self.io.tool_output("Auto mode disabled - will confirm each tool call")
+                show_status = False
+                
+            elif arg == "--limit" and i + 1 < len(parts):
+                try:
+                    limit = int(parts[i + 1])
+                    self.coder.max_tool_calls = limit
+                    self.io.tool_output(f"Max tool calls set to: {limit}")
+                    show_status = False
+                except ValueError:
+                    self.io.tool_error(f"Invalid limit: {parts[i + 1]}")
+                i += 1
+                
+            elif arg == "--cost" and i + 1 < len(parts):
+                try:
+                    cost = float(parts[i + 1])
+                    self.coder.max_tool_cost = cost
+                    self.coder.cost_tracker.max_cost = cost
+                    self.io.tool_output(f"Cost limit set to: ${cost:.2f}")
+                    show_status = False
+                except ValueError:
+                    self.io.tool_error(f"Invalid cost: {parts[i + 1]}")
+                i += 1
+                
+            elif arg == "--safe":
+                from aider.tools.risk import RiskLevel
+                self.coder.tool_router.risk_confirm_threshold = RiskLevel.NORMAL
+                self.io.tool_output("Safe mode: only SAFE tools auto-confirm")
+                show_status = False
+                
+            else:
+                self.io.tool_error(f"Unknown option: {arg}")
+                
+            i += 1
+        
+        # Show status
+        if show_status or True:  # Always show status after changes
+            status = "on" if self.coder.auto_confirm_tools else "off"
+            self.io.tool_output(f"\nCurrent settings:")
+            self.io.tool_output(f"  Auto mode: {status}")
+            self.io.tool_output(f"  Max tool calls: {self.coder.max_tool_calls}")
+            self.io.tool_output(f"  Cost limit: ${self.coder.max_tool_cost:.2f}")
+            self.io.tool_output(f"  Risk threshold: {self.coder.tool_router.risk_confirm_threshold.name}")
+            
+            # Show budget status
+            if hasattr(self.coder, 'cost_tracker'):
+                remaining = self.coder.cost_tracker.remaining_budget
+                self.io.tool_output(f"  Remaining budget: ${remaining:.2f}")
+
     def cmd_copy_context(self, args=None):
         """Copy the current chat context as markdown, suitable to paste into a web UI"""
 
@@ -1678,6 +2235,41 @@ Just show me the edits I need to make.
             )
         except Exception as e:
             self.io.tool_error(f"An unexpected error occurred while copying to clipboard: {str(e)}")
+
+    def cmd_skill(self, args):
+        """
+        Execute OpenClaw skills with optional agent support.
+        
+        Usage:
+            /skill list [--agents]           List available skills
+            /skill run <skill> [options]     Run a skill
+            /skill info <skill>              Show skill information
+            /skill search <query>            Search for skills
+        
+        Examples:
+            /skill list --agents
+            /skill run code-review -f auth.py --agents
+            /skill info test-generation
+        """
+        from aider.skills.command import SkillsCommand
+        
+        skill_cmd = SkillsCommand(
+            io=self.io,
+            coder=self.coder,
+            verbose=self.verbose,
+        )
+        return skill_cmd.cmd_skill(args)
+    
+    def completions_skill(self):
+        """Provide completions for the /skill command."""
+        from aider.skills.command import SkillsCommand
+        
+        skill_cmd = SkillsCommand(
+            io=self.io,
+            coder=self.coder,
+            verbose=self.verbose,
+        )
+        return skill_cmd.completions_skill()
 
 
 def expand_subdir(file_path):

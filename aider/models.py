@@ -106,6 +106,9 @@ MODEL_ALIASES = {
     "gemini-3-pro-preview": "gemini/gemini-3-pro-preview",
     "gemini": "gemini/gemini-3-pro-preview",
     "gemini-exp": "gemini/gemini-2.5-pro-exp-03-25",
+    # Gemini Code Assist — direct Gemini API (not through OpenClaw gateway)
+    "gemini-coding-assist": "gemini/gemini-2.5-pro",
+    "gca": "gemini/gemini-2.5-pro",
     "grok3": "xai/grok-3-beta",
     "optimus": "openrouter/openrouter/optimus-alpha",
 }
@@ -767,6 +770,11 @@ class Model(ModelSettings):
     def get_repo_map_tokens(self):
         map_tokens = 1024
         max_inp_tokens = self.info.get("max_input_tokens")
+
+        # Parity with Gemini/Kimi: If context is > 1M, we can skip the map and send more context.
+        if max_inp_tokens and max_inp_tokens >= 1_000_000:
+            return max_inp_tokens // 4  # High context models get huge maps or full repo
+
         if max_inp_tokens:
             map_tokens = max_inp_tokens / 8
             map_tokens = min(map_tokens, 4096)

@@ -138,14 +138,16 @@ def get_parser(default_config_files, git_root):
     group.add_argument(
         "--reasoning-effort",
         type=str,
-        help="Set the reasoning_effort API parameter (default: not set)",
+        default="medium",
+        help="Set the reasoning_effort API parameter (default: medium)",
     )
     group.add_argument(
         "--thinking-tokens",
         type=str,
+        default="4096",
         help=(
             "Set the thinking token budget for models that support it. Use 0 to disable. (default:"
-            " not set)"
+            " 4096)"
         ),
     )
     group.add_argument(
@@ -165,15 +167,15 @@ def get_parser(default_config_files, git_root):
         "--chat-mode",
         metavar="EDIT_FORMAT",
         choices=edit_format_choices,
-        default=None,
-        help="Specify what edit format the LLM should use (default depends on model)",
+        default="architect",
+        help="Specify what edit format the LLM should use (default: architect)",
     )
     group.add_argument(
         "--architect",
         action="store_const",
         dest="edit_format",
         const="architect",
-        help="Use architect edit format for the main chat",
+        help="Use architect edit format for the main chat (default)",
     )
     group.add_argument(
         "--auto-accept-architect",
@@ -247,8 +249,8 @@ def get_parser(default_config_files, git_root):
     group.add_argument(
         "--map-tokens",
         type=int,
-        default=None,
-        help="Suggested number of tokens to use for repo map, use 0 to disable",
+        default=2048,
+        help="Suggested number of tokens to use for repo map, use 0 to disable (default: 2048)",
     )
     group.add_argument(
         "--map-refresh",
@@ -264,6 +266,12 @@ def get_parser(default_config_files, git_root):
         type=float,
         default=2,
         help="Multiplier for map tokens when no files are specified (default: 2)",
+    )
+    group.add_argument(
+        "--semantic-index",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable semantic indexing for conceptual context discovery (default: True)",
     )
 
     ##########
@@ -553,8 +561,8 @@ def get_parser(default_config_files, git_root):
     group.add_argument(
         "--auto-test",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Enable/disable automatic testing after changes (default: False)",
+        default=True,
+        help="Enable/disable automatic testing after changes (default: True)",
     )
     group.add_argument(
         "--test",
@@ -859,6 +867,33 @@ def get_parser(default_config_files, git_root):
             "Print shell completion script for the specified SHELL and exit. Supported shells:"
             f" {', '.join(supported_shells_list)}. Example: aider --shell-completions bash"
         ),
+    )
+
+    ##########
+    group = parser.add_argument_group("Hooks and skills")
+    group.add_argument(
+        "--hooks-dir",
+        metavar="HOOKS_DIR",
+        default=None,
+        help="Directory containing hook files to load at startup",
+    )
+    group.add_argument(
+        "--enable-skills",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable skills system for reusable functionality (default: False)",
+    )
+    group.add_argument(
+        "--skill-path",
+        metavar="SKILL_PATH",
+        default=None,
+        help="Path to skills file or directory (requires --enable-skills)",
+    )
+    group.add_argument(
+        "--mcp",
+        action="store_true",
+        help="Run aider as an MCP server (stdio)",
+        default=False,
     )
 
     ##########

@@ -4,6 +4,7 @@ import os
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 import webbrowser
 from collections import defaultdict
@@ -37,7 +38,7 @@ from aider.mdstream import MarkdownStream
 
 from .dump import dump  # noqa: F401
 from .editor import pipe_editor
-from .utils import is_image_file
+from .utils import is_image_file, is_video_file, is_audio_file
 
 # Constants
 NOTIFICATION_MESSAGE = "Aider is waiting for your input"
@@ -450,9 +451,50 @@ class InputOutput:
             self.tool_error(f"{filename}: {e}")
             return
 
+    def read_video(self, filename):
+        """Extract frames from video for multimodal context (Gemini parity)."""
+        if not shutil.which("ffmpeg"):
+            self.tool_error("ffmpeg not found. Please install ffmpeg to process video files.")
+            return []
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            # Extract 1 frame per second, max 10 frames
+            cmd = [
+                "ffmpeg", "-i", str(filename),
+                "-vf", "fps=1,scale=512:-1",
+                "-vframes", "10",
+                os.path.join(temp_dir, "frame_%03d.jpg")
+            ]
+            subprocess.run(cmd, capture_output=True, check=True)
+            
+            frames = []
+            for frame_file in sorted(os.listdir(temp_dir)):
+                frames.append(self.read_image(os.path.join(temp_dir, frame_file)))
+            return frames
+        except Exception as e:
+            self.tool_error(f"Video processing failed for {filename}: {e}")
+            return []
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def read_audio(self, filename):
+        """Read audio file as base64."""
+        try:
+            with open(str(filename), "rb") as audio_file:
+                encoded_string = base64.b64encode(audio_file.read())
+                return encoded_string.decode("utf-8")
+        except Exception as e:
+            self.tool_error(f"Audio processing failed for {filename}: {e}")
+            return None
+
     def read_text(self, filename, silent=False):
         if is_image_file(filename):
             return self.read_image(filename)
+        if is_video_file(filename):
+            return self.read_video(filename)
+        if is_audio_file(filename):
+            return self.read_audio(filename)
 
         try:
             with open(str(filename), "r", encoding=self.encoding) as f:

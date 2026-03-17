@@ -1,5 +1,6 @@
 import re
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -80,6 +81,7 @@ class FileWatcher:
         self.watcher_thread = None
         self.changed_files = set()
         self.gitignores = gitignores
+        self.fix_on_save = False
 
         self.gitignore_spec = load_gitignores(
             [Path(g) for g in self.gitignores] if self.gitignores else []
@@ -139,6 +141,29 @@ class FileWatcher:
 
         changed_files = {str(Path(change[1])) for change in changes}
         self.changed_files.update(changed_files)
+        
+        if self.fix_on_save:
+            # Loop prevention: Don't auto-fix if we already tried recently for this file
+            now = time.time()
+            if not hasattr(self, "_last_fix_time"):
+                self._last_fix_time = {}
+            
+            for fname in changed_files:
+                # 30 second cooldown per file to prevent feedback loops
+                if now - self._last_fix_time.get(fname, 0) < 30:
+                    continue
+
+                if fname.endswith(('.py', '.js', '.ts', '.go', '.rs')):
+                    self._last_fix_time[fname] = now
+                    self.io.tool_output(f"\n⚡ File saved: {self.coder.get_rel_fname(fname)}. Auto-fixing...")
+                    # Run autonomous fix turn
+                    lint_cmd = f"python -m py_compile {fname} 2>&1" if fname.endswith(".py") else None
+                    if lint_cmd:
+                        self.coder.autonomous_agent.run_task(
+                            f"The file {self.coder.get_rel_fname(fname)} was just modified. Please ensure it has no syntax errors.",
+                            test_command=lint_cmd
+                        )
+
         self.io.interrupt_input()
         return True
 
