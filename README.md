@@ -3,12 +3,13 @@
 </p>
 
 <h1 align="center">
-AI Pair Programming in Your Terminal
+Aider (Autonomous Multi-Agent Edition)
 </h1>
 
+> **Note**: This is a specialized fork of the original [Aider](https://github.com/Aider-AI/aider) project by [Paul Gauthier](https://github.com/paul-gauthier). It incorporates advanced "Parity+" agentic infrastructure, including autonomous discovery, multi-agent delegation, and recursive verification loops.
 
 <p align="center">
-Aider lets you pair program with LLMs to start a new project or build on your existing codebase. 
+AI Pair Programming in Your Terminal
 </p>
 
 <p align="center">
