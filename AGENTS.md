@@ -744,6 +744,24 @@ A comprehensive security and architectural audit was performed on the codebase. 
 17. `tests/test_failure_modes.py` - Import path fix
 18. `aider/commands.py` - Unified `/auto` with Architect workflow
 
+### Known Limitations (Accepted Risks)
+
+The following issues were identified but accepted as design trade-offs:
+
+| Issue | Location | Reason |
+|-------|----------|--------|
+| `shell=True` for editor | `editor.py:134` | Required for complex editor commands (e.g., `vim -c "set noswapfile"`) |
+| `shell=True` for /run | `run_cmd.py:67` | Explicit user shell command execution |
+| `shell=True` for /git | `commands.py:1003` | Git command wrapper |
+| `asyncio.run()` in skills | `skills/base.py:263`, `skills/command.py:113`, `skills/agent_skill.py:245` | Skills system secondary code path |
+| `asyncio.run()` in preview | `coders/base_coder.py:1074` | Thread context (daemon thread) |
+
+These are acceptable because:
+1. Shell commands are explicitly user-requested (editor, /run, /git)
+2. Editor commands require shell parsing for arguments
+3. Skills system is not primary code path (main agent paths fixed)
+4. All critical async paths (A2A, agents, tools) have been hardened
+
 ### Remaining Work (Non-Critical)
 
 1. **Whitespace/Linting** - ~3,400 style issues (W293, E501, F401)
