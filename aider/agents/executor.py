@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import traceback
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -233,12 +234,19 @@ class AgentExecutor:
         # This routes through http://127.0.0.1:18789/v1
         configure_gateway()
 
+        # Force OpenClaw mode for sub-agents if parent is using OpenClaw
+        if "openclaw" in model_name.lower() or ":18789" in os.environ.get("OPENAI_API_BASE", ""):
+            os.environ["AIDER_OPENCLAW_MODE"] = "enabled"
+
         # Convert model name for gateway if needed
         # Supports tier prefixes like @intel, @speed, @uncen
         if model_name.startswith("@"):
             gateway_model = model_name
         elif model_name in ("chat", "default"):
             gateway_model = "chat"
+        elif "openclaw:" in model_name:
+            # Extract agent name from openclaw:chat format
+            gateway_model = model_name.split(":", 1)[1] if ":" in model_name else "chat"
         else:
             # Pass through specific model names - gateway handles routing
             gateway_model = model_name
