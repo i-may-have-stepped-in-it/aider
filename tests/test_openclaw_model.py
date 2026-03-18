@@ -121,7 +121,8 @@ class TestOpenClawModel(unittest.TestCase):
             model = OpenClawModel("openclaw:chat")
             self.assertEqual(model.name, "openclaw:chat")
             self.assertEqual(model.config.agent_id, "chat")
-            self.assertEqual(model._resolved_mode, "responses")
+            # Default mode is now "http" (responses API returns 404)
+            self.assertEqual(model._resolved_mode, "http")
 
     def test_parse_model_name(self):
         """Test parsing agent_id from model name."""
@@ -141,11 +142,11 @@ class TestOpenClawModel(unittest.TestCase):
     def test_resolve_mode(self):
         """Test mode resolution logic."""
         with patch('aider.openclaw_model.requests'):
-            # Auto mode
+            # Auto mode now defaults to "http" (responses API returns 404)
             model = OpenClawModel("test")
             model.config.mode = "auto"
             model._resolved_mode = model._resolve_mode()
-            self.assertEqual(model._resolved_mode, "responses")
+            self.assertEqual(model._resolved_mode, "http")
 
             # Explicit modes
             model = OpenClawModel("test")
@@ -158,11 +159,11 @@ class TestOpenClawModel(unittest.TestCase):
             model._resolved_mode = model._resolve_mode()
             self.assertEqual(model._resolved_mode, "http")
 
-            # Invalid mode falls back to responses
+            # Invalid mode falls back to http (not responses)
             model = OpenClawModel("test")
             model.config.mode = "invalid"
             model._resolved_mode = model._resolve_mode()
-            self.assertEqual(model._resolved_mode, "responses")
+            self.assertEqual(model._resolved_mode, "http")
 
     def test_get_headers(self):
         """Test header generation."""
@@ -219,8 +220,8 @@ class TestOpenClawModel(unittest.TestCase):
         call_args = mock_post.call_args
         self.assertIn("/responses", call_args[0][0])
 
-        # Verify response parsing
-        self.assertEqual(response["choices"][0]["message"]["content"], "Test response")
+        # Verify response parsing - response is now SimpleNamespace (object-style access)
+        self.assertEqual(response.choices[0].message.content, "Test response")
 
     @patch('aider.openclaw_model.requests.post')
     def test_send_http_api(self, mock_post):

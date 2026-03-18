@@ -82,6 +82,18 @@ class SkillContext:
     max_agents: int = 5
     agent_timeout: float = 300.0
 
+    # Execution control
+    timeout: float = 0.0  # 0 means no timeout
+    _cancelled: bool = field(default=False, repr=False)
+
+    def is_cancelled(self) -> bool:
+        """Check if execution has been cancelled."""
+        return self._cancelled
+
+    def cancel(self):
+        """Mark execution as cancelled."""
+        self._cancelled = True
+
     def output(self, message: str):
         """Output a message."""
         if self.io:
@@ -221,15 +233,19 @@ class Skill(ABC):
                 warnings=self._warnings,
             )
 
-    @abstractmethod
     async def _execute_impl(self, **kwargs) -> SkillResult:
         """
         Internal execution method (must be implemented by subclasses).
 
         This method should contain the actual skill logic.
         It is called after parameter validation and with timeout protection.
+
+        Note: Subclasses can override execute() directly instead, but then
+        they are responsible for their own validation and timeout handling.
         """
-        pass
+        raise NotImplementedError(
+            f"Skill {self.name} must implement either _execute_impl() or override execute()"
+        )
 
     def _get_required_params(self) -> List[str]:
         """
