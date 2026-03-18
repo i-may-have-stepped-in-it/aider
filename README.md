@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">
-Aider (Security Hardened + Autonomous Agent Parity) v0.86.3-dev
+Aider (Security Hardened + Autonomous Agent Parity) v2.0.10
 </h1>
 
 > **Note**: This is a security-hardened fork of the original [Aider](https://github.com/Aider-AI/aider) project by [Paul Gauthier](https://github.com/paul-gauthier). This fork includes:
