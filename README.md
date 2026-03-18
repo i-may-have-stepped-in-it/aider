@@ -161,16 +161,14 @@ aider --model o3-mini --api-key openai=<key>
 
 ## 📚 Documentation
 
-### OpenClaw Integration
-- [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) - OpenClaw Gateway setup & usage
-- [OPENCLAW_IMPLEMENTATION_SUMMARY.md](OPENCLAW_IMPLEMENTATION_SUMMARY.md) - Technical implementation details
-- [OPENCLAW_ARCHITECTURE_COMPLETE.md](OPENCLAW_ARCHITECTURE_COMPLETE.md) - Complete architecture reference
+**Start Here**: [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) - Complete navigation guide
 
-### Security & Architecture
-- [AGENTS.md](AGENTS.md) - Complete architecture guide with security audit
-- [TOOL_SYSTEM_V2_SUMMARY.md](TOOL_SYSTEM_V2_SUMMARY.md) - Tools v2 architecture
-- [SKILLS.md](SKILLS.md) - Skills system documentation
-- [HOOKS_README.md](HOOKS_README.md) - Hooks system for extensibility
+### Quick Reference
+- [EXTENSIONS_SUMMARY.md](EXTENSIONS_SUMMARY.md) - All extensions vs original Aider
+- [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) - OpenClaw Gateway setup
+- [AGENTS.md](AGENTS.md) - Architecture & security audit
+- [SKILLS.md](SKILLS.md) - Skills system
+- [HOOKS_README.md](HOOKS_README.md) - Hooks system
 
 ### Original Aider Docs
 - [Installation Guide](https://aider.chat/docs/install.html)
