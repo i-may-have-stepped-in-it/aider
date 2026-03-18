@@ -1,9 +1,9 @@
 # Aider - AI Pair Programming in Your Terminal
 
-> **Last Updated**: 2026-03-17  
-> **Version**: 2.0.0 (OpenClaw Security-Hardened Fork)
-  
-> **Python Support**: 3.10, 3.11, 3.12, 3.13, 3.14
+> **Last Updated**: 2026-03-18  
+> **Version**: 2.0.10 (OpenClaw Security-Hardened Fork)
+> **Python Support**: 3.10, 3.11, 3.12, 3.13, 3.14  
+> **Documentation**: [Index](DOCUMENTATION_INDEX.md) | [OpenClaw](OPENCLAW_INTEGRATION.md) | [Skills](SKILLS.md)
 
 ## Project Overview
 

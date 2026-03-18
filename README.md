@@ -106,6 +106,8 @@ Automatically lint and test your code every time aider makes changes. Aider can 
 
 ## 🚀 Getting Started
 
+### Quick Install
+
 ```bash
 # Install this fork
 python -m pip install -e git+https://github.com/i-may-have-stepped-in-it/aider.git#egg=aider-chat
@@ -114,7 +116,36 @@ python -m pip install -e git+https://github.com/i-may-have-stepped-in-it/aider.g
 git clone https://github.com/i-may-have-stepped-in-it/aider.git
 cd aider
 python -m pip install -e .
+```
 
+### OpenClaw Gateway (Recommended)
+
+Connect to your self-hosted OpenClaw Gateway:
+
+```bash
+# 1. Configure environment
+export OPENAI_API_BASE=http://127.0.0.1:18789/v1
+export OPENAI_API_KEY=<your-openclaw-token>
+
+# 2. Use with OpenClaw (avoids bootstrap messages)
+cd /to/your/project
+aider --model openclaw
+
+# Or specify agent explicitly
+aider --model openclaw:chat
+```
+
+**Why OpenClaw?**
+- No per-token API costs (self-hosted)
+- Access to multiple LLMs through one endpoint
+- Tier routing (@highspeed, @intelligence, @uncensored)
+- Session continuity across conversations
+
+[→ Full OpenClaw Setup Guide](OPENCLAW_INTEGRATION.md)
+
+### Cloud LLMs
+
+```bash
 # Change directory into your codebase
 cd /to/your/project
 
@@ -130,10 +161,16 @@ aider --model o3-mini --api-key openai=<key>
 
 ## 📚 Documentation
 
+### OpenClaw Integration
+- [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) - OpenClaw Gateway setup & usage
+- [OPENCLAW_IMPLEMENTATION_SUMMARY.md](OPENCLAW_IMPLEMENTATION_SUMMARY.md) - Technical implementation details
+- [OPENCLAW_ARCHITECTURE_COMPLETE.md](OPENCLAW_ARCHITECTURE_COMPLETE.md) - Complete architecture reference
+
 ### Security & Architecture
 - [AGENTS.md](AGENTS.md) - Complete architecture guide with security audit
 - [TOOL_SYSTEM_V2_SUMMARY.md](TOOL_SYSTEM_V2_SUMMARY.md) - Tools v2 architecture
 - [SKILLS.md](SKILLS.md) - Skills system documentation
+- [HOOKS_README.md](HOOKS_README.md) - Hooks system for extensibility
 
 ### Original Aider Docs
 - [Installation Guide](https://aider.chat/docs/install.html)

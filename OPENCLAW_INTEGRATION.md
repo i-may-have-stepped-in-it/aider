@@ -1,6 +1,20 @@
 # OpenClaw Gateway Integration for Aider
 
+> **Quick Links**: [Setup Guide](#quick-start) | [Configuration](#configuration-modes) | [Troubleshooting](#troubleshooting) | [Architecture](#architecture)  
+> **Related Docs**: [Implementation Summary](OPENCLAW_IMPLEMENTATION_SUMMARY.md) | [Architecture Complete](OPENCLAW_ARCHITECTURE_COMPLETE.md) | [Documentation Index](DOCUMENTATION_INDEX.md)
+
 This document describes the integrated OpenClaw Gateway support in Aider, which provides direct connectivity to OpenClaw agents without requiring manual HTTP API configuration.
+
+## What's New
+
+| Feature | Description |
+|---------|-------------|
+| **Model Alias** | Use `--model openclaw` instead of complex API configuration |
+| **Agent Selection** | Built-in `chat` agent avoids bootstrap messages |
+| **Auto-Detection** | Automatically detects OpenClaw endpoints |
+| **Dual API** | Supports both OpenResponses and OpenAI-compatible HTTP |
+| **Session Continuity** | Maintains context across aider sessions |
+| **Tier Routing** | Use `@highspeed`, `@intelligence`, `@uncensored` aliases |
 
 ## Overview
 

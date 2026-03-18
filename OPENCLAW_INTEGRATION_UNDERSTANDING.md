@@ -1,7 +1,14 @@
-# OpenClaw Integration - Updated Understanding
+# OpenClaw Integration - Historical Design Notes
 
-## Date: 2026-03-17
-## Purpose: Document actual architecture before redesign
+> **Status**: Historical/Archive - Design notes from initial integration  
+> **Date**: 2026-03-17  
+> **See Also**: [Integration Guide](OPENCLAW_INTEGRATION.md) | [Architecture Complete](OPENCLAW_ARCHITECTURE_COMPLETE.md)
+
+## Purpose
+
+This document contains historical design notes from the initial OpenClaw integration. It documents the investigation into bootstrap messages, routing architecture, and solution options that were considered.
+
+For current usage, see [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md).
 
 ---
 

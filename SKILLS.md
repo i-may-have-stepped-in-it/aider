@@ -1,5 +1,7 @@
 # Aider Skills with Multi-Agent Support
 
+> **Related Docs**: [Documentation Index](DOCUMENTATION_INDEX.md) | [OpenClaw Integration](OPENCLAW_INTEGRATION.md) | [AGENTS.md](AGENTS.md)
+
 This document describes the skills system for Aider, which provides reusable, composable capabilities that can leverage the multi-agent system for parallel task execution.
 
 ## Overview
