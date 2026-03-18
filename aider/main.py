@@ -951,6 +951,15 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     else:
         analytics.event("no-repo")
 
+    # Install multi-agent support if enabled
+    if getattr(args, 'enable_agents', False) or os.environ.get('AIDER_ENABLE_AGENTS'):
+        try:
+            from aider.agents.integration import install_in_commands
+            install_in_commands()
+        except Exception as e:
+            if args.verbose:
+                print(f"Failed to install agent commands: {e}", file=sys.stderr)
+
     commands = Commands(
         io,
         None,
@@ -1025,6 +1034,18 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             add_gitignore_files=args.add_gitignore_files,
             use_semantic_index=args.semantic_index,
         )
+
+        # Initialize multi-agent support if enabled
+        if getattr(args, 'enable_agents', False) or os.environ.get('AIDER_ENABLE_AGENTS'):
+            try:
+                from aider.agents.integration import initialize_agents
+                max_agents = getattr(args, 'max_agents', 5)
+                initialize_agents(coder, max_concurrent=max_agents)
+                io.tool_output(f"Multi-agent support enabled (max concurrent: {max_agents})")
+            except Exception as e:
+                if args.verbose:
+                    io.tool_error(f"Failed to initialize agents: {e}")
+
     except UnknownEditFormat as err:
         io.tool_error(str(err))
         io.offer_url(urls.edit_formats, "Open documentation about edit formats?")

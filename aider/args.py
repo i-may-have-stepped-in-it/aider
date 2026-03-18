@@ -870,7 +870,7 @@ def get_parser(default_config_files, git_root):
     )
 
     ##########
-    group = parser.add_argument_group("Hooks and skills")
+    group = parser.add_argument_group("Hooks, skills, and agents")
     group.add_argument(
         "--hooks-dir",
         metavar="HOOKS_DIR",
@@ -888,6 +888,18 @@ def get_parser(default_config_files, git_root):
         metavar="SKILL_PATH",
         default=None,
         help="Path to skills file or directory (requires --enable-skills)",
+    )
+    group.add_argument(
+        "--enable-agents",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable multi-agent support for parallel task execution (default: False)",
+    )
+    group.add_argument(
+        "--max-agents",
+        type=int,
+        default=5,
+        help="Maximum concurrent agents when --enable-agents is set (default: 5)",
     )
     group.add_argument(
         "--mcp",
