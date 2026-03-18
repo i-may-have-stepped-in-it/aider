@@ -118,6 +118,13 @@ class Commands:
 
         # Store the original read-only filenames provided via args.read
         self.original_read_only_fnames = set(original_read_only_fnames or [])
+        
+        # Initialize skills registry for swarm command
+        try:
+            from aider.skills.registry import get_registry
+            self.skills_registry = get_registry()
+        except ImportError:
+            self.skills_registry = None
 
     def cmd_model(self, args):
         "Switch the Main Model to a new LLM"
