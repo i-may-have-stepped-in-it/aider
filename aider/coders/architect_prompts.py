@@ -31,8 +31,8 @@ Use these tools iteratively until you have a complete understanding of the task.
 
 ## Intelligent Delegation
 
-If a request is large or spans multiple independent components, you should partition the work. 
-Use the `delegate` tool to assign sub-tasks to specialized agents. 
+If a request is large or spans multiple independent components, you should partition the work.
+Use the `delegate` tool to assign sub-tasks to specialized agents.
 
 Available Specialists:
 - `librarian`: Expert in finding files and project context.

@@ -121,7 +121,7 @@ def validate_multimodal_file(fname, model):
     elif is_audio_file(fname):
         if not model.info.get("supports_audio_input"):
             return False, f"Model {model.name} does not support audio."
-    
+
     return True, None
 
 

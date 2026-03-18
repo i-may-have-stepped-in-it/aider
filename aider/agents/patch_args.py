@@ -11,19 +11,19 @@ we provide this patch that can be applied programmatically.
 def add_agent_args(parser):
     """
     Add agent-related arguments to the parser.
-    
+
     Args:
         parser: The ArgumentParser instance from args.py
     """
     group = parser.add_argument_group("Multi-agent Options")
-    
+
     group.add_argument(
         "--enable-agents",
         action="store_true",
         help="Enable multi-agent support for parallel task execution",
         default=False,
     )
-    
+
     group.add_argument(
         "--max-agents",
         type=int,
@@ -31,7 +31,7 @@ def add_agent_args(parser):
         metavar="N",
         help="Maximum number of concurrent agents (default: 5)",
     )
-    
+
     group.add_argument(
         "--agent-timeout",
         type=float,
@@ -39,5 +39,5 @@ def add_agent_args(parser):
         metavar="SECONDS",
         help="Default timeout for agent execution in seconds (default: 300)",
     )
-    
+
     return parser

@@ -8,10 +8,9 @@ This skill provides intelligent model routing based on task complexity:
 - Usage tracking per project
 """
 
-import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, field
 
 from .base import Skill, SkillContext, SkillResult
 
@@ -21,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelRoute:
     """Represents a model routing decision."""
+
     model: str
     complexity: str  # "fast", "balanced", "smart"
     confidence: float  # 0.0 to 1.0
@@ -32,6 +32,7 @@ class ModelRoute:
 @dataclass
 class UsageStats:
     """Track model usage statistics."""
+
     model: str
     total_requests: int = 0
     total_tokens: int = 0
@@ -68,7 +69,7 @@ class ModelRoutingSkill(Skill):
             "kimi-medium": 0.004,
             "gemini-pro-preview": 0.01,
             "claude-sonnet": 0.008,
-            "kimi-smart": 0.015
+            "kimi-smart": 0.015,
         }
 
     def _get_required_params(self) -> List[str]:
@@ -104,8 +105,8 @@ class ModelRoutingSkill(Skill):
                 "confidence": route.confidence,
                 "reasoning": route.reasoning,
                 "estimated_cost": route.estimated_cost,
-                "estimated_tokens": route.estimated_tokens
-            }
+                "estimated_tokens": route.estimated_tokens,
+            },
         )
 
     def _analyze_task(self, description: str, task_type: str) -> ModelRoute:
@@ -120,7 +121,15 @@ class ModelRoutingSkill(Skill):
         complexity_indicators = {
             "fast": ["simple", "quick", "short", "basic", "quick fix", "formatting"],
             "balanced": ["modify", "change", "update", "refactor", "improve", "optimize"],
-            "smart": ["complex", "difficult", "analyze", "design", "architect", "explain", "review"]
+            "smart": [
+                "complex",
+                "difficult",
+                "analyze",
+                "design",
+                "architect",
+                "explain",
+                "review",
+            ],
         }
 
         for level, indicators in complexity_indicators.items():
@@ -149,7 +158,7 @@ class ModelRoutingSkill(Skill):
         # Check usage stats for fallback
         if self._usage_stats:
             # Prefer models with lower cost
-            min_cost = float('inf')
+            min_cost = float("inf")
             for model in models:
                 if model in self._usage_stats:
                     cost_per_1k = self._cost_per_1k_tokens.get(model, 0.005)
@@ -168,7 +177,7 @@ class ModelRoutingSkill(Skill):
             confidence=confidence,
             reasoning=" ".join(reasoning) if reasoning else "Default routing",
             estimated_cost=estimated_cost,
-            estimated_tokens=estimated_tokens
+            estimated_tokens=estimated_tokens,
         )
 
     def _update_usage(self, model: str, estimated_tokens: int):
@@ -191,7 +200,7 @@ class ModelRoutingSkill(Skill):
         return {
             "fast": self._fast_models,
             "balanced": self._balanced_models,
-            "smart": self._smart_models
+            "smart": self._smart_models,
         }
 
     def get_usage_stats(self) -> List[Dict[str, Any]]:
@@ -202,7 +211,11 @@ class ModelRoutingSkill(Skill):
                 "total_requests": stats.total_requests,
                 "total_tokens": stats.total_tokens,
                 "total_cost": round(stats.total_cost, 4),
-                "success_rate": round(stats.success_count / stats.total_requests * 100, 2) if stats.total_requests > 0 else 0
+                "success_rate": (
+                    round(stats.success_count / stats.total_requests * 100, 2)
+                    if stats.total_requests > 0
+                    else 0
+                ),
             }
             for stats in self._usage_stats.values()
         ]
@@ -216,7 +229,7 @@ class ModelRoutingSkill(Skill):
             "complexity": route.complexity,
             "estimated_tokens": route.estimated_tokens,
             "estimated_cost": route.estimated_cost,
-            "cost_per_1k_tokens": self._cost_per_1k_tokens.get(route.model, 0.005)
+            "cost_per_1k_tokens": self._cost_per_1k_tokens.get(route.model, 0.005),
         }
 
     def get_optimal_model(self) -> str:
@@ -264,6 +277,6 @@ class ModelRoutingSkill(Skill):
                 "estimated_cost": route.estimated_cost,
                 "estimated_tokens": route.estimated_tokens,
                 "usage_stats": stats,
-                "optimal_model": self.get_optimal_model()
-            }
+                "optimal_model": self.get_optimal_model(),
+            },
         )

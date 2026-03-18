@@ -111,6 +111,10 @@ MODEL_ALIASES = {
     "gca": "gemini/gemini-2.5-pro",
     "grok3": "xai/grok-3-beta",
     "optimus": "openrouter/openrouter/optimus-alpha",
+    # OpenClaw Gateway aliases - use 'chat' agent by default
+    "openclaw": "openclaw:chat",
+    "openclaw-chat": "openclaw:chat",
+    "openclaw-main": "openclaw:main",
 }
 # Model metadata loaded from resources and user's files.
 
@@ -139,6 +143,8 @@ class ModelSettings:
     remove_reasoning: Optional[str] = None  # Deprecated alias for reasoning_tag
     system_prompt_prefix: Optional[str] = None
     accepts_settings: Optional[list] = None
+    embedding_model_name: Optional[str] = None
+    embedding_api_base: Optional[str] = None
 
 
 # Load model settings from package resource
@@ -975,12 +981,48 @@ class Model(ModelSettings):
 
             os.environ[openai_api_key] = token
 
+    def _is_openclaw_endpoint(self):
+        """Check if the configured endpoint is OpenClaw Gateway."""
+        api_base = os.environ.get("OPENAI_API_BASE", "")
+        indicators = ["127.0.0.1:18789", "localhost:18789", ":18789", "openclaw"]
+        return any(ind in api_base.lower() for ind in indicators)
+
+    def _use_openclaw_model(self):
+        """Determine if we should use OpenClawModel for this request."""
+        # Check explicit override
+        mode = os.environ.get("AIDER_OPENCLAW_MODE", "auto").lower()
+        if mode == "disabled":
+            return False
+        if mode in ("responses", "http", "enabled"):
+            return True
+
+        # Auto-detect based on endpoint
+        if mode == "auto":
+            return self._is_openclaw_endpoint()
+
+        return False
+
     def send_completion(self, messages, functions, stream, temperature=None):
         if os.environ.get("AIDER_SANITY_CHECK_TURNS"):
             sanity_check_messages(messages)
 
         if self.is_deepseek_r1():
             messages = ensure_alternating_roles(messages)
+
+        # Check if we should use OpenClaw direct integration
+        if self._use_openclaw_model():
+            try:
+                from aider.openclaw_model import OpenClawConfig, OpenClawModel
+
+                config = OpenClawConfig.from_env()
+                oc_model = OpenClawModel(self.name, config=config, verbose=self.verbose)
+                return oc_model.send_completion(messages, functions, stream, temperature)
+            except ImportError as e:
+                if self.verbose:
+                    print(f"OpenClawModel not available: {e}", file=sys.stderr)
+            except Exception as e:
+                if self.verbose:
+                    print(f"OpenClawModel failed: {e}, falling back to litellm", file=sys.stderr)
 
         kwargs = dict(
             model=self.name,
@@ -1025,6 +1067,32 @@ class Model(ModelSettings):
                 }
 
             self.github_copilot_token_to_open_ai_key(kwargs["extra_headers"])
+
+        # Are we using OpenClaw Gateway? Add agent selection header
+        if self._is_openclaw_endpoint():
+            if "extra_headers" not in kwargs:
+                kwargs["extra_headers"] = {}
+
+            # Only add if not already present
+            if "X-OpenClaw-Agent-Id" not in kwargs["extra_headers"]:
+                agent_id = os.environ.get("AIDER_OPENCLAW_AGENT_ID", "chat")
+                kwargs["extra_headers"]["X-OpenClaw-Agent-Id"] = agent_id
+                if self.verbose:
+                    print(
+                        f"Added OpenClaw header: X-OpenClaw-Agent-Id: {agent_id}",
+                        file=sys.stderr,
+                    )
+
+            # Add session key if provided
+            session_key = os.environ.get("AIDER_OPENCLAW_SESSION_KEY")
+            if session_key and "X-OpenClaw-Session-Key" not in kwargs["extra_headers"]:
+                kwargs["extra_headers"]["X-OpenClaw-Session-Key"] = session_key
+
+            # Explicitly set api_key and api_base for OpenClaw
+            if "api_key" not in kwargs:
+                kwargs["api_key"] = os.environ.get("OPENAI_API_KEY")
+            if "api_base" not in kwargs:
+                kwargs["api_base"] = os.environ.get("OPENAI_API_BASE")
 
         res = litellm.completion(**kwargs)
         return hash_object, res

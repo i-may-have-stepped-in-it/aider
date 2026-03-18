@@ -1,19 +1,10 @@
-"""Aider tools package for LLM function calling.
+"""
+Tool system - DEPRECATED modules removed.
 
-This package provides tool schemas and execution capabilities for aider commands
-when used with LLM function calling APIs.
+Only RiskLevel and get_tool_risk remain here for backward compatibility.
+All other tool functionality has moved to aider.tools_v2
 """
 
-from aider.tools.schema import (
-    ToolSchemaGenerator,
-    get_tool_schemas,
-    get_tool_schema,
-    get_tool_descriptions,
-)
+from .risk import RiskLevel, get_tool_risk
 
-__all__ = [
-    "ToolSchemaGenerator",
-    "get_tool_schemas",
-    "get_tool_schema",
-    "get_tool_descriptions",
-]
+__all__ = ["RiskLevel", "get_tool_risk"]

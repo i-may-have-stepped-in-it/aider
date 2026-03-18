@@ -1,15 +1,18 @@
-from typing import Optional, Set, Dict, Any
 from pathlib import Path
-from .repo import GitRepo
-from .repomap import RepoMap
+from typing import Any, Dict, Optional, Set
+
 from .coders.chat_history import ChatHistory
 from .indexers.semantic import SemanticIndexer
+from .repo import GitRepo
+from .repomap import RepoMap
+
 
 class ProjectContext:
     """
     Unified state container for an Aider project.
     Encapsulates repository state, chat history, and context maps.
     """
+
     def __init__(
         self,
         root: str,
@@ -23,11 +26,11 @@ class ProjectContext:
         self.chat_history = chat_history
         self.semantic_indexer = semantic_indexer
         self.repo_map = repo_map
-        
+
         # Files currently in the chat context (absolute paths)
         self.abs_fnames: Set[str] = set()
         self.abs_read_only_fnames: Set[str] = set()
-        
+
         # Shared metadata/variables
         self.metadata: Dict[str, Any] = {}
 

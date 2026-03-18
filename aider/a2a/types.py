@@ -1,12 +1,13 @@
 """A2A (Agent-to-Agent) protocol types."""
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import Any, Dict, List, Optional, Callable
 import time
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Callable, Dict, Optional
 
 
 class A2AMessageType(Enum):
     """A2A message types."""
+
     REQUEST = "request"
     RESPONSE = "response"
     NOTIFICATION = "notification"
@@ -19,6 +20,7 @@ class A2AMessageType(Enum):
 
 class A2AContentType(Enum):
     """Content types for A2A messages."""
+
     TEXT = "text"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
@@ -29,6 +31,7 @@ class A2AContentType(Enum):
 @dataclass
 class A2AMessage:
     """Agent-to-agent message."""
+
     id: str
     type: A2AMessageType
     sender_id: str
@@ -45,6 +48,7 @@ class A2AMessage:
 @dataclass
 class A2ACapability:
     """Agent capability advertisement."""
+
     name: str
     description: str
     parameters: Dict[str, Any] = field(default_factory=dict)
@@ -55,6 +59,7 @@ class A2ACapability:
 @dataclass
 class A2ARequest:
     """Structured request content."""
+
     capability: str
     parameters: Dict[str, Any]
     timeout: float = 30.0
@@ -63,6 +68,7 @@ class A2ARequest:
 @dataclass
 class A2AResponse:
     """Structured response content."""
+
     success: bool
     result: Any = None
     error: Optional[str] = None

@@ -39,7 +39,7 @@ from aider.mdstream import MarkdownStream
 
 from .dump import dump  # noqa: F401
 from .editor import pipe_editor
-from .utils import is_image_file, is_video_file, is_audio_file
+from .utils import is_audio_file, is_image_file, is_video_file
 
 # Constants
 NOTIFICATION_MESSAGE = "Aider is waiting for your input"
@@ -462,13 +462,17 @@ class InputOutput:
         try:
             # Extract 1 frame per second, max 10 frames
             cmd = [
-                "ffmpeg", "-i", str(filename),
-                "-vf", "fps=1,scale=512:-1",
-                "-vframes", "10",
-                os.path.join(temp_dir, "frame_%03d.jpg")
+                "ffmpeg",
+                "-i",
+                str(filename),
+                "-vf",
+                "fps=1,scale=512:-1",
+                "-vframes",
+                "10",
+                os.path.join(temp_dir, "frame_%03d.jpg"),
             ]
             subprocess.run(cmd, capture_output=True, check=True)
-            
+
             frames = []
             for frame_file in sorted(os.listdir(temp_dir)):
                 frames.append(self.read_image(os.path.join(temp_dir, frame_file)))
@@ -1138,9 +1142,7 @@ class InputOutput:
                     if not cmd_parts:
                         self.tool_warning("Invalid notifications command (empty after parsing)")
                     else:
-                        result = subprocess.run(
-                            cmd_parts, shell=False, capture_output=True
-                        )
+                        result = subprocess.run(cmd_parts, shell=False, capture_output=True)
                         if result.returncode != 0 and result.stderr:
                             error_msg = result.stderr.decode("utf-8", errors="replace")
                             self.tool_warning(f"Failed to run notifications command: {error_msg}")

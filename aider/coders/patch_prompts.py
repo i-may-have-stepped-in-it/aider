@@ -127,8 +127,8 @@ For each file you need to modify, start with a marker line:
 
 Where `[ACTION]` is one of `Add`, `Update`, or `Delete`.
 
-⇨ **Each file MUST appear only once in the patch.**  
-   Consolidate all changes for that file into the same block.  
+⇨ **Each file MUST appear only once in the patch.**
+   Consolidate all changes for that file into the same block.
    If you are moving code within a file, include both the deletions and the
    insertions as separate hunks inside this single `*** Update File:` block
    (do *not* open a second block for the same file).

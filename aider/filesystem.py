@@ -1,14 +1,15 @@
 import shutil
 import tempfile
-import os
 from pathlib import Path
-from typing import Set, Dict
+from typing import Set
+
 
 class TransactionalFilesystem:
     """
     Manages atomic file operations using a shadow workspace.
     Ensures that changes are only committed to the primary root after validation.
     """
+
     def __init__(self, root: str):
         self.root = Path(root)
         self.shadow_root = Path(tempfile.mkdtemp(prefix="aider_shadow_"))
@@ -18,7 +19,7 @@ class TransactionalFilesystem:
         """Copy a file from root to shadow workspace for editing."""
         src = self.root / rel_path
         dst = self.shadow_root / rel_path
-        
+
         if not src.exists():
             # If creating a new file, just ensure parent dir exists
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -26,14 +27,14 @@ class TransactionalFilesystem:
         else:
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
-        
+
         self.modified_files.add(rel_path)
 
     def write_content(self, rel_path: str, content: str):
         """Write content to the shadow version of a file."""
         if rel_path not in self.modified_files:
             self.stage_file(rel_path)
-        
+
         (self.shadow_root / rel_path).write_text(content)
 
     def commit(self):

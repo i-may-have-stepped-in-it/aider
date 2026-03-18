@@ -69,10 +69,7 @@ class WholeFileCoder(Coder):
                             continue
 
                         # Did gpt prepend a bogus dir?
-                        if (
-                            candidate not in chat_files
-                            and Path(candidate).name in chat_files
-                        ):
+                        if candidate not in chat_files and Path(candidate).name in chat_files:
                             candidate = Path(candidate).name
 
                         if candidate in chat_files:
@@ -84,7 +81,11 @@ class WholeFileCoder(Coder):
                     placeholders = ["path/to/filename.ext", "path/to/file.ext", "filename.ext"]
                     if not fname or any(p in fname.lower() for p in placeholders):
                         # If it's a placeholder, don't treat it as a valid filename for a block
-                        if not fname or fname.lower() in placeholders or "path/to/" in fname.lower():
+                        if (
+                            not fname
+                            or fname.lower() in placeholders
+                            or ("path/to/" in fname.lower())
+                        ):
                             fname = None
 
                     # If no match found in chat_files,
@@ -93,15 +94,13 @@ class WholeFileCoder(Coder):
                         candidate = lines[i - 1].strip()
                         candidate = candidate.strip("*").rstrip(":").strip("`").lstrip("#").strip()
                         if candidate and len(candidate) <= 250:
-                            # Only use it if it's in chat_files, or it's clearly a filename (no spaces)
+                            # Only use it if it's in chat_files, or it's clearly a filename
+                            # (no spaces)
                             if candidate in chat_files or " " not in candidate:
                                 fname = candidate
                                 fname_source = "block"
                                 # Did gpt prepend a bogus dir?
-                                if (
-                                    fname not in chat_files
-                                    and Path(fname).name in chat_files
-                                ):
+                                if fname not in chat_files and Path(fname).name in chat_files:
                                     fname = Path(fname).name
 
                 if not fname:  # blank line? or ``` was on first line i==0

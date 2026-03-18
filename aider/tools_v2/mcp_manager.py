@@ -1,13 +1,12 @@
-
 import json
 import logging
 import subprocess
 import threading
-import time
-from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class MCPTool:
@@ -15,6 +14,7 @@ class MCPTool:
     description: str
     input_schema: Dict[str, Any]
     server_name: str
+
 
 @dataclass
 class MCPResource:
@@ -24,6 +24,7 @@ class MCPResource:
     mime_type: Optional[str]
     server_name: str
 
+
 @dataclass
 class MCPPrompt:
     name: str
@@ -31,9 +32,10 @@ class MCPPrompt:
     arguments: List[Dict[str, Any]]
     server_name: str
 
+
 class MCPServer:
     """Handles communication with an MCP server via stdio."""
-    
+
     def __init__(self, name: str, command: List[str]):
         self.name = name
         self.command = command
@@ -56,40 +58,47 @@ class MCPServer:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                bufsize=1
+                bufsize=1,
             )
             self._running = True
             self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
             self._reader_thread.start()
-            
+
             # 1. Initialize
-            init_res = self._call("initialize", {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "aider", "version": "0.1.0"}
-            })
-            
+            self._call(
+                "initialize",
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "aider", "version": "0.1.0"},
+                },
+            )
+
             # 2. List Tools
             tools_res = self._call("tools/list", {})
             for t in tools_res.get("tools", []):
-                self.tools.append(MCPTool(
-                    name=t["name"],
-                    description=t.get("description", ""),
-                    input_schema=t.get("inputSchema", {}),
-                    server_name=self.name
-                ))
-            
+                self.tools.append(
+                    MCPTool(
+                        name=t["name"],
+                        description=t.get("description", ""),
+                        input_schema=t.get("inputSchema", {}),
+                        server_name=self.name,
+                    )
+                )
+
             # 3. List Resources
             try:
                 res_list = self._call("resources/list", {})
                 for r in res_list.get("resources", []):
-                    self.resources.append(MCPResource(
-                        uri=r["uri"],
-                        name=r["name"],
-                        description=r.get("description", ""),
-                        mime_type=r.get("mimeType"),
-                        server_name=self.name
-                    ))
+                    self.resources.append(
+                        MCPResource(
+                            uri=r["uri"],
+                            name=r["name"],
+                            description=r.get("description", ""),
+                            mime_type=r.get("mimeType"),
+                            server_name=self.name,
+                        )
+                    )
             except Exception:
                 logger.debug(f"Server {self.name} does not support resources/list")
 
@@ -97,19 +106,24 @@ class MCPServer:
             try:
                 prompts_list = self._call("prompts/list", {})
                 for p in prompts_list.get("prompts", []):
-                    self.prompts.append(MCPPrompt(
-                        name=p["name"],
-                        description=p.get("description", ""),
-                        arguments=p.get("arguments", []),
-                        server_name=self.name
-                    ))
+                    self.prompts.append(
+                        MCPPrompt(
+                            name=p["name"],
+                            description=p.get("description", ""),
+                            arguments=p.get("arguments", []),
+                            server_name=self.name,
+                        )
+                    )
             except Exception:
                 logger.debug(f"Server {self.name} does not support prompts/list")
 
             # 5. Initialized notification
             self._notify("notifications/initialized", {})
-            
-            logger.info(f"MCP Server '{self.name}' started: {len(self.tools)} tools, {len(self.resources)} resources, {len(self.prompts)} prompts")
+
+            logger.info(
+                f"MCP Server '{self.name}' started: {len(self.tools)} tools, "
+                f"{len(self.resources)} resources, {len(self.prompts)} prompts"
+            )
             return True
         except Exception as e:
             logger.error(f"Failed to start MCP server {self.name}: {e}")
@@ -118,10 +132,7 @@ class MCPServer:
 
     def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool on the MCP server."""
-        return self._call("tools/call", {
-            "name": tool_name,
-            "arguments": arguments
-        })
+        return self._call("tools/call", {"name": tool_name, "arguments": arguments})
 
     def _call(self, method: str, params: Dict[str, Any], timeout: float = 30.0) -> Any:
         # Reduced default timeout for discovery calls
@@ -130,17 +141,12 @@ class MCPServer:
 
         rid = self._request_id
         self._request_id += 1
-        
+
         event = threading.Event()
         self._pending_requests[rid] = event
-        
-        request = {
-            "jsonrpc": "2.0",
-            "id": rid,
-            "method": method,
-            "params": params
-        }
-        
+
+        request = {"jsonrpc": "2.0", "id": rid, "method": method, "params": params}
+
         try:
             self.process.stdin.write(json.dumps(request) + "\n")
             self.process.stdin.flush()
@@ -151,18 +157,14 @@ class MCPServer:
         if not event.wait(timeout):
             del self._pending_requests[rid]
             raise TimeoutError(f"MCP request {rid} timed out")
-            
+
         res = self._responses.pop(rid)
         if "error" in res:
             raise Exception(f"MCP Error: {res['error']}")
         return res.get("result")
 
     def _notify(self, method: str, params: Dict[str, Any]):
-        notification = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params
-        }
+        notification = {"jsonrpc": "2.0", "method": method, "params": params}
         self.process.stdin.write(json.dumps(notification) + "\n")
         self.process.stdin.flush()
 
@@ -194,16 +196,17 @@ class MCPServer:
                 self.process.kill()
         self.process = None
 
+
 class MCPManager:
     """Manages multiple MCP servers and their combined toolset."""
-    
+
     def __init__(self):
         self.servers: Dict[str, MCPServer] = {}
 
     def add_server(self, name: str, command: List[str]) -> bool:
         if name in self.servers:
             self.servers[name].stop()
-        
+
         server = MCPServer(name, command)
         if server.start():
             self.servers[name] = server
@@ -244,7 +247,9 @@ class MCPManager:
                     return s._call("prompts/get", {"name": name, "arguments": arguments})
         raise ValueError(f"Prompt not found: {name}")
 
-    def call_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def call_tool(
+        self, server_name: str, tool_name: str, arguments: Dict[str, Any]
+    ) -> Dict[str, Any]:
         if server_name not in self.servers:
             raise ValueError(f"Unknown MCP server: {server_name}")
         return self.servers[server_name].call_tool(tool_name, arguments)

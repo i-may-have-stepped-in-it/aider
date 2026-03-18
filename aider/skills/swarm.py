@@ -1,11 +1,11 @@
-
 import asyncio
 import uuid
 from typing import List, Optional
-from .base import Skill, SkillContext, SkillResult
+
+from ..a2a.bus import A2AMessageBus
 from ..agents.executor import AgentExecutor
 from ..agents.registry import AgentRegistry
-from ..a2a.bus import A2AMessageBus
+from .base import Skill, SkillContext, SkillResult
 
 
 class SwarmSkill(Skill):
@@ -45,6 +45,7 @@ class SwarmSkill(Skill):
         for agent_name in agents:
             from ..a2a.agent import A2AEnabledAgent
             from ..agents.agent import AgentStatus
+
             agent = A2AEnabledAgent(
                 id=str(uuid.uuid4())[:8],
                 name=agent_name,
@@ -62,8 +63,9 @@ class SwarmSkill(Skill):
             for agent in agent_instances:
                 peer_ids = [a.id for a in agent_instances if a.id != agent.id]
                 # Provide sub-coder if not yet assigned
-                if not hasattr(agent, 'coder') or agent.coder is None:
+                if not hasattr(agent, "coder") or agent.coder is None:
                     from ..coders.base_coder import Coder
+
                     agent.coder = Coder.create(
                         main_model=parent_coder.main_model,
                         io=parent_coder.io,
@@ -83,7 +85,7 @@ class SwarmSkill(Skill):
             with_message=(
                 f"Task: {task}\n\n"
                 f"Consensus from swarm discussion:\n{final_history}\n\n"
-                f"Apply the final code changes."
+                "Apply the final code changes."
             )
         )
 

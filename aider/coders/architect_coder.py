@@ -1,13 +1,15 @@
-from .architect_prompts import ArchitectPrompts
-from .reviewer_prompts import ReviewerPrompts
-from .librarian_prompts import LibrarianPrompts
-from .tool_coder_v2 import ToolEnabledCoderV2
-from .base_coder import Coder
 import asyncio
+import logging
 import os
-import glob
-import re
 from pathlib import Path
+
+from .architect_prompts import ArchitectPrompts
+from .base_coder import Coder
+from .librarian_prompts import LibrarianPrompts
+from .reviewer_prompts import ReviewerPrompts
+from .tool_coder_v2 import ToolEnabledCoderV2
+
+logger = logging.getLogger(__name__)
 
 
 class ArchitectCoder(ToolEnabledCoderV2):
@@ -24,8 +26,12 @@ class ArchitectCoder(ToolEnabledCoderV2):
         self._critique_count = 0
         self._critique_lock = asyncio.Lock()
 
+        # Coordination-only mode (Shift+Tab equivalent)
+        # When True, architect can only coordinate, not implement directly
+        self.coordination_only = kwargs.get("coordination_only", False)
+
         # Register self on the A2A bus for autonomous collaboration
-        if hasattr(self, 'a2a_bus'):
+        if hasattr(self, "a2a_bus"):
             self.a2a_bus.register("architect", self._on_a2a_message)
             self.a2a_bus.register("system", self._on_system_request)
 
@@ -44,7 +50,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
             max_retries: Maximum number of retry attempts (default: 3)
             retry_delay: Delay between retries in seconds (default: 1.0)
         """
-        from aider.a2a.types import A2AMessageType, A2AResponse
+        from aider.a2a.types import A2AResponse
 
         content = message.content
         if not isinstance(content, dict):
@@ -61,7 +67,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
             for path in Path(self.root).rglob(pattern):
                 if path.is_file():
                     found.append(str(path.relative_to(self.root)))
-            result = {"found": found[:10]} # Limit to 10 for context safety
+            result = {"found": found[:10]}  # Limit to 10 for context safety
 
         if result is not None:
             response = A2AResponse(success=True, result=result)
@@ -73,15 +79,12 @@ class ArchitectCoder(ToolEnabledCoderV2):
                     loop = asyncio.get_event_loop()
                 except RuntimeError:
                     # If no loop in this thread, use the one from the bus if available
-                    loop = getattr(self.a2a_bus, '_loop', None)
+                    loop = getattr(self.a2a_bus, "_loop", None)
 
                 if loop and loop.is_running():
                     try:
                         asyncio.run_coroutine_threadsafe(
-                            self.a2a_bus.send(
-                                message.reply(response, sender_id="system")
-                            ),
-                            loop
+                            self.a2a_bus.send(message.reply(response, sender_id="system")), loop
                         )
                         # Success - exit retry loop
                         break
@@ -89,13 +92,19 @@ class ArchitectCoder(ToolEnabledCoderV2):
                         last_error = e
                         if attempt < max_retries - 1:
                             # Exponential backoff
-                            delay = retry_delay * (2 ** attempt)
-                            logger.warning(f"A2A send failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {delay}s...")
+                            delay = retry_delay * (2**attempt)
+                            logger.warning(
+                                f"A2A send failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                                f"Retrying in {delay}s..."
+                            )
                             import time
+
                             time.sleep(delay)
                         else:
                             # Final attempt failed
-                            logger.error(f"A2A send failed after {max_retries} attempts: {last_error}")
+                            logger.error(
+                                f"A2A send failed after {max_retries} attempts: {last_error}"
+                            )
                 else:
                     # Fallback to local execution if loop is not available
                     logger.warning("No event loop available, skipping A2A send")
@@ -110,25 +119,25 @@ class ArchitectCoder(ToolEnabledCoderV2):
         PARITY+: Librarian Phase. Find all relevant files before planning.
         """
         self.io.tool_output("Librarian: Identifying relevant project context...")
-        
+
         # Create a temporary coder with the Librarian persona
         # Use the @speed tier for efficient discovery
         librarian_kwargs = dict(
             main_model=self.main_model.weak_model or self.main_model,
             io=self.io,
             from_coder=self,
-            edit_format="tool-v2", # Librarian needs tool access
+            edit_format="tool",  # Librarian needs tool access (now V2)
             summarize_from_coder=False,
         )
-        
+
         librarian = Coder.create(**librarian_kwargs)
         librarian.gpt_prompts = LibrarianPrompts()
-        
+
         research_msg = f"Research Task: Find all files related to this request: '{user_request}'"
-        
+
         # Run the librarian loop (it will use index_search, find, etc.)
         librarian_output = librarian.run(with_message=research_msg, preproc=False)
-        
+
         # Extract file paths from the output
         if "FILES:" in librarian_output:
             paths_section = librarian_output.split("FILES:")[1].strip()
@@ -140,20 +149,22 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 path = line.strip().lstrip("- ").lstrip("* ").strip("`").rstrip(".,:;")
                 if not path:
                     continue
-                
+
                 # Verify it looks like a path and exists in the root
                 abs_path = self.abs_root_path(path)
                 if os.path.isfile(abs_path):
                     if abs_path not in self.abs_fnames:
                         self.add_rel_fname(path)
                         added_count += 1
-            
+
             if added_count > 0:
-                self.io.tool_output(f"Librarian: Added {added_count} relevant files to chat context.")
-        
+                self.io.tool_output(
+                    f"Librarian: Added {added_count} relevant files to chat context."
+                )
+
         self.research_done = True
 
-    def run(self, with_message=None, preproc=True):
+    def run(self, with_message=None, preproc=True, **kwargs):
         """
         Override run to ensure research is performed before the plan.
         """
@@ -161,33 +172,34 @@ class ArchitectCoder(ToolEnabledCoderV2):
             # First turn of a new request: perform research
             if preproc:
                 self.perform_research(with_message)
-            
-        return super().run(with_message=with_message)
+
+        return super().run(with_message=with_message, preproc=preproc, **kwargs)
 
     def critique_plan(self, plan):
         """
         Structural Self-Critique: Spawns a reviewer to find flaws in the plan.
         """
         self.io.tool_output("Initiating structural self-critique...")
-        
+
         # Create a temporary coder with the Reviewer persona
         reviewer_kwargs = dict(
-            main_model=self.main_model, # Use the @intel tier
+            main_model=self.main_model,  # Use the @intel tier
             io=self.io,
             from_coder=self,
-            edit_format="ask", # We just want a response, not a code change
+            edit_format="ask",  # We just want a response, not a code change
             summarize_from_coder=False,
         )
-        
+
         reviewer = Coder.create(**reviewer_kwargs)
         reviewer.gpt_prompts = ReviewerPrompts()
-        
+
         # The reviewer sees the user request and the architect's plan
         critique_msg = (
-            f"Please review the following plan for the user request: '{self.cur_messages[0]['content']}'\n\n"
+            "Please review the following plan for the user request: "
+            f"'{self.cur_messages[0]['content']}'\n\n"
             f"ARCHITECT PLAN:\n{plan}"
         )
-        
+
         critique = reviewer.run(with_message=critique_msg)
         return critique
 
@@ -202,7 +214,10 @@ class ArchitectCoder(ToolEnabledCoderV2):
         # PARITY+: Structural Self-Critique Loop with Circuit Breaker
         # Check circuit breaker to prevent infinite recursion
         if self._critique_count >= self.max_critiques:
-            self.io.tool_warning(f"Circuit breaker: Maximum critique iterations ({self.max_critiques}) reached. Proceeding with current plan.")
+            self.io.tool_warning(
+                f"Circuit breaker: Maximum critique iterations ({self.max_critiques}) "
+                "reached. Proceeding with current plan."
+            )
         elif self.num_critiques < self.max_critiques:
             # Increment both counters for circuit breaker protection
             self.num_critiques += 1
@@ -213,7 +228,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
             if "PASSED" not in critique.upper():
                 self.io.tool_warning("Architectural review found issues. Self-correcting...")
                 correction_prompt = (
-                    f"Your plan was reviewed and the following issues were found:\n\n"
+                    "Your plan was reviewed and the following issues were found:\n\n"
                     f"{critique}\n\n"
                     "Please provide a refined plan that addresses all these issues."
                 )
@@ -225,6 +240,15 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 self._critique_count = 0
 
         # Proceed to Editor Phase
+        # COORDINATION-ONLY MODE: Prevent direct implementation
+        if self.coordination_only:
+            self.io.tool_output(
+                "Coordination-only mode: Plan complete. Ready for delegation to specialists."
+            )
+            self.io.tool_output("To implement, spawn specialist agents using the 'delegate' tool.")
+            self.io.tool_output("To disable coordination-only mode, set coordination_only=False")
+            return
+
         if not self.auto_accept_architect and not self.io.confirm_ask("Edit the files?"):
             return
 
@@ -267,7 +291,10 @@ class ArchitectCoder(ToolEnabledCoderV2):
             if not success:
                 # Check circuit breaker to prevent infinite test correction loops
                 if self._critique_count >= self.max_critiques:
-                    self.io.tool_error(f"Circuit breaker: Maximum test correction iterations ({self.max_critiques}) reached. Stopping autonomous correction.")
+                    self.io.tool_error(
+                        "Circuit breaker: Maximum test correction iterations "
+                        f"({self.max_critiques}) reached. Stopping autonomous correction."
+                    )
                     self.io.tool_error(f"Test output:\n{output}")
                 else:
                     self.io.tool_error("Tests failed! Initiating autonomous self-correction...")
@@ -275,8 +302,8 @@ class ArchitectCoder(ToolEnabledCoderV2):
 
                     # Feed the failure back into the Architect
                     correction_prompt = (
-                        f"The changes were applied, but the tests failed with the following output:\n\n"
-                        f"```\n{output}\n```\n\n"
+                        "The changes were applied, but the tests failed with the following "
+                        f"output:\n\n```\n{output}\n```\n\n"
                         "Please analyze this failure and provide a corrected plan."
                     )
                     # Recurse: Call self.run again with the test failure context
@@ -287,20 +314,26 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 self._critique_count = 0
 
         # PARITY+: Proactive Terminal Monitoring
-        if hasattr(self, 'tool_router') and self.tool_router.terminal_watcher.processes:
+        if hasattr(self, "tool_router") and self.tool_router.terminal_watcher.processes:
             self.io.tool_output("Architect: Monitoring background processes for health...")
             for name, proc in self.tool_router.terminal_watcher.processes.items():
                 # Check if process is still running before monitoring
-                if not hasattr(proc, 'is_running') or not proc.is_running():
-                    self.io.tool_warning(f"Proactive Monitor: Background process '{name}' has stopped!")
+                if not hasattr(proc, "is_running") or not proc.is_running():
+                    self.io.tool_warning(
+                        f"Proactive Monitor: Background process '{name}' has stopped!"
+                    )
                     continue
 
                 try:
                     logs = proc.get_logs(lines=10)
                     # Simple error detection in logs
                     log_text = "\n".join(logs).lower()
-                    if any(err in log_text for err in ["error", "exception", "traceback", "failed", "crash"]):
-                        self.io.tool_warning(f"Proactive Monitor: Detected potential issue in background process '{name}'!")
+                    errors = ["error", "exception", "traceback", "failed", "crash"]
+                    if any(err in log_text for err in errors):
+                        self.io.tool_warning(
+                            "Proactive Monitor: Detected potential issue in background "
+                            f"process '{name}'!"
+                        )
                         # Feed the logs back into context for a potential proactive fix
                         monitor_prompt = (
                             f"I noticed a potential error in the background process '{name}'. "

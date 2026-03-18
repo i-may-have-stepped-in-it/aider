@@ -23,6 +23,7 @@ from typing import Any, Dict, Optional
 
 def _run_cli(name: str, prompt: str, cwd: Optional[str] = None) -> str:
     from aider.agents.cli_agent import CliAgent, CliAgentError
+
     agent = CliAgent(name)
     if not agent.is_available():
         return f"[cli:{name}] binary '{agent.spec['binary']}' not found on PATH."
@@ -55,9 +56,15 @@ def _cmd_cli(self_commands, args: str) -> None:
         return
 
     if args == "list":
-        from aider.agents.cli_agent import CliAgent, _CLI_SPECS
+        from aider.agents.cli_agent import _CLI_SPECS, CliAgent
+
         io.tool_output("CLI agents:")
-        _modes = {"kimi": "Wire/subagents", "gemini": "headless", "claude": "print", "codex": "exec"}
+        _modes = {
+            "kimi": "Wire/subagents",
+            "gemini": "headless",
+            "claude": "print",
+            "codex": "exec",
+        }
         for name in sorted(_CLI_SPECS):
             agent = CliAgent(name)
             status = "✓ available" if agent.is_available() else "✗ not found"
@@ -80,7 +87,8 @@ def _cmd_cli(self_commands, args: str) -> None:
 
 def _completions_cli(self_commands):
     """Tab-completions for /cli."""
-    from aider.agents.cli_agent import _CLI_SPECS, _CLI_ALIASES
+    from aider.agents.cli_agent import _CLI_ALIASES, _CLI_SPECS
+
     completions = [("list", "Show available CLIs")]
     for name in sorted(_CLI_SPECS):
         completions.append((name, f"Run one-shot prompt via {name} CLI"))

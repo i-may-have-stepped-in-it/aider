@@ -83,6 +83,7 @@ class InteractiveBrowser:
     Persistent browser session for multi-step interactions.
     Enables 'Computer Use' parity with Claude 3.5 Sonnet.
     """
+
     _instance = None
 
     def __init__(self, verify_ssl=True):
@@ -100,6 +101,7 @@ class InteractiveBrowser:
 
     def _ensure_browser(self):
         from playwright.sync_api import sync_playwright
+
         if not self.playwright:
             self.playwright = sync_playwright().start()
             self.browser = self.playwright.chromium.launch(headless=True)
@@ -142,6 +144,7 @@ class DocCrawler:
     Recursive documentation crawler for semantic indexing.
     Parity with Cursor's '@docs' feature.
     """
+
     def __init__(self, base_url, max_pages=50, max_depth=3):
         self.base_url = base_url.rstrip("/")
         self.domain = urllib.parse.urlparse(base_url).netloc
@@ -158,17 +161,17 @@ class DocCrawler:
             url, depth = self.queue.pop(0)
             if url in self.visited or depth > self.max_depth:
                 continue
-            
+
             self.visited.add(url)
             pages_crawled += 1
-            
+
             try:
                 content = self.scraper.scrape(url)
                 if not content:
                     continue
-                
+
                 yield url, content
-                
+
                 # Extract links for further crawling
                 if depth < self.max_depth:
                     links = self._extract_links(url)
@@ -182,7 +185,7 @@ class DocCrawler:
         """Extract same-domain links from a page."""
         import httpx
         from bs4 import BeautifulSoup
-        
+
         links = []
         try:
             with httpx.Client(timeout=10.0) as client:

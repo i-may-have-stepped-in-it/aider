@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 class AgentStatus(Enum):
     """Status of a sub-agent."""
+
     PENDING = auto()
     RUNNING = auto()
     COMPLETED = auto()
@@ -25,13 +26,14 @@ class AgentStatus(Enum):
 @dataclass
 class AgentResult:
     """Result from a sub-agent execution."""
+
     success: bool
     output: str = ""
     error: Optional[str] = None
     files_modified: list[str] = field(default_factory=list)
     token_usage: dict[str, int] = field(default_factory=dict)
     execution_time: float = 0.0
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -48,37 +50,38 @@ class AgentResult:
 class SubAgent:
     """
     A sub-agent spawned for a specific task.
-    
+
     Inspired by kimi-cli's multi-agent system.
     Each sub-agent has isolated context while sharing the parent's
     repository and configuration.
     """
+
     id: str
     name: str
     task: str
     status: AgentStatus = AgentStatus.PENDING
-    
+
     # Configuration
     model: Optional[str] = None
     edit_format: Optional[str] = None
     files: list[str] = field(default_factory=list)
     readonly_files: list[str] = field(default_factory=list)
-    
+
     # Execution
     coder: Optional[Coder] = field(default=None, repr=False)
     result: Optional[AgentResult] = None
     error: Optional[str] = None
-    
+
     # Metadata
     created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
     completed_at: Optional[float] = None
     parent_id: Optional[str] = None
-    
+
     # Progress tracking
     progress: str = ""
     messages: list[dict] = field(default_factory=list)
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
@@ -98,7 +101,7 @@ class SubAgent:
             "parent_id": self.parent_id,
             "progress": self.progress,
         }
-    
+
     @property
     def execution_time(self) -> float:
         """Calculate execution time."""
@@ -106,16 +109,18 @@ class SubAgent:
             return 0.0
         end_time = self.completed_at or time.time()
         return end_time - self.started_at
-    
+
     @property
     def is_active(self) -> bool:
         """Check if agent is currently running."""
         return self.status in (AgentStatus.PENDING, AgentStatus.RUNNING)
-    
+
     def update_progress(self, message: str) -> None:
         """Update progress message."""
         self.progress = message
-        self.messages.append({
-            "timestamp": time.time(),
-            "message": message,
-        })
+        self.messages.append(
+            {
+                "timestamp": time.time(),
+                "message": message,
+            }
+        )

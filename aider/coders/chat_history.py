@@ -1,11 +1,19 @@
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from aider.history import ChatSummary
+
 
 class ChatHistory:
     """
     Manages the history of chat messages, including summarization and context management.
     """
-    def __init__(self, summarizer: Optional[ChatSummary] = None, done_messages: Optional[List[Dict[str, Any]]] = None, cur_messages: Optional[List[Dict[str, Any]]] = None):
+
+    def __init__(
+        self,
+        summarizer: Optional[ChatSummary] = None,
+        done_messages: Optional[List[Dict[str, Any]]] = None,
+        cur_messages: Optional[List[Dict[str, Any]]] = None,
+    ):
         self.summarizer = summarizer
         self.done_messages = done_messages or []
         self.cur_messages = cur_messages or []
@@ -32,7 +40,7 @@ class ChatHistory:
         return self.done_messages + self.cur_messages
 
     def summarize_if_needed(self):
-        """Checks if the history needs summarization and performs it if a summarizer is available."""
+        """Checks if history needs summarization and performs it if a summarizer is available."""
         if not self.summarizer:
             return
 

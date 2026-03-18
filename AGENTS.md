@@ -1,7 +1,7 @@
 # Aider - AI Pair Programming in Your Terminal
 
 > **Last Updated**: 2026-03-17  
-> **Version**: 0.86.3.dev37+security-fixes-parity
+> **Version**: 2.0.0 (OpenClaw Security-Hardened Fork)
   
 > **Python Support**: 3.10, 3.11, 3.12, 3.13, 3.14
 
@@ -29,8 +29,8 @@ aider/
 ├── hooks/               # Extension hooks implementations
 ├── hooks.py             # Basic hooks system (legacy)
 ├── hooks_manager.py     # Advanced hooks with OpenClaw integration
-├── tools/               # Tool execution system (v1)
-├── tools_v2/            # Enhanced tool execution system (v2)
+├── tools/               # RiskLevel only (v1 retired)
+├── tools_v2/            # Tool execution system (production)
 ├── a2a/                 # Agent-to-Agent (A2A) protocol
 ├── mcp/                 # Model Context Protocol server
 ├── editor_protocol/     # Editor/IDE integration protocol
@@ -55,7 +55,7 @@ Aider supports multiple edit formats through the `coders/` module:
 - **UnifiedDiffCoder** - Unified diff format
 - **PatchCoder** - Patch file format
 - **ArchitectCoder** - Architect mode for planning
-- **ToolEnabledCoder/ToolEnabledCoderV2** - Tool use via function calling
+- **ToolEnabledCoderV2** - Tool use via function calling (production)
 - **AskCoder** - Read-only Q&A mode
 - **HelpCoder** - Built-in help system
 
@@ -177,22 +177,11 @@ Features:
 - Resource management
 - Compatible with MCP clients (Claude Desktop, etc.)
 
-### Tools System (v1 and v2)
+### Tools System (Production)
 
-#### Tools v1 (`tools/`)
+The tool system is located in `tools_v2/` and provides production-grade tool execution.
 
-Original tool execution system:
-
-- **router.py** - Tool routing and execution
-- **sandbox.py** - Basic sandboxed execution
-- **schema.py** - Tool schema definitions
-- **cost.py** - Cost tracking
-- **risk.py** - Risk assessment for operations
-- **truncate.py** - Output truncation
-
-#### Tools v2 (`tools_v2/`) - Production Architecture
-
-Complete architectural rewrite addressing resilience, security, and observability:
+#### Architecture
 
 | Component | File | Purpose |
 |-----------|------|---------|
@@ -206,7 +195,7 @@ Complete architectural rewrite addressing resilience, security, and observabilit
 | **TerminalWatcher** | `terminal_watcher.py` | Terminal output monitoring |
 | **WebSearch** | `search_web.py` | Web search capabilities |
 
-Key improvements over v1:
+Key features:
 - No nested `asyncio.run()` calls (singleton thread pool)
 - Static sandbox profiles (no injection vulnerabilities)
 - Accurate cost tracking (40-60% more accurate)
@@ -356,10 +345,8 @@ Test directories:
 - `tests/browser/` - Browser automation tests
 - `tests/scrape/` - Web scraping tests
 - `tests/tools/` - Tool system integration tests
-- `aider/tests/tools/` - Tool v1 unit tests
-- `aider/tests/tools_v2/` - Tool v2 integration tests
-
-Note: Tools v2 tests are comprehensive (~90 tests) and may take longer to run.
+- `aider/tests/tools/` - DEPRECATED: Old tool tests (kept for reference)
+- `aider/tests/tools_v2/` - Tool system tests (production)
 
 ### Building Documentation
 
@@ -697,7 +684,7 @@ A comprehensive security and architectural audit was performed on the codebase. 
 - Sandboxing with firejail/unshare
 - Async executor with proper loop handling
 
-**Recommendation:** Complete migration to v2, deprecate v1.
+**Status:** ✅ COMPLETE - v1 is deprecated, v2 is now the default. `edit_format="tool"` automatically uses ToolEnabledCoderV2.
 
 #### 3. Incomplete Feature Matrix
 
@@ -705,7 +692,7 @@ A comprehensive security and architectural audit was performed on the codebase. 
 |---------|--------|-----|
 | **Core Editing** | ✅ Complete | Multiple edit formats, reliable SEARCH/REPLACE |
 | **Architect Mode** | ✅ Complete | Full workflow with discovery, planning, critique |
-| **Tool System v2** | ⚠️ Partial | Needs consolidation with v1 |
+| **Tool System v2** | ✅ Complete | v1 deprecated, v2 is default |
 | **Multi-Agent** | ⚠️ Partial | `/agent` commands exist but limited real-world usage |
 | **A2A Protocol** | ⚠️ Partial | Protocol defined, limited inter-process support |
 | **MCP Server** | ⚠️ Minimal | Only 3 tools exposed, not full feature set |
@@ -744,23 +731,20 @@ A comprehensive security and architectural audit was performed on the codebase. 
 17. `tests/test_failure_modes.py` - Import path fix
 18. `aider/commands.py` - Unified `/auto` with Architect workflow
 
-### Known Limitations (Accepted Risks)
+### Security Hardening Summary
 
-The following issues were identified but accepted as design trade-offs:
+All previously identified security issues have been resolved:
 
-| Issue | Location | Reason |
-|-------|----------|--------|
-| `shell=True` for editor | `editor.py:134` | Required for complex editor commands (e.g., `vim -c "set noswapfile"`) |
-| `shell=True` for /run | `run_cmd.py:67` | Explicit user shell command execution |
-| `shell=True` for /git | `commands.py:1003` | Git command wrapper |
-| `asyncio.run()` in skills | `skills/base.py:263`, `skills/command.py:113`, `skills/agent_skill.py:245` | Skills system secondary code path |
-| `asyncio.run()` in preview | `coders/base_coder.py:1074` | Thread context (daemon thread) |
+| Issue | Location | Fix Applied |
+|-------|----------|-------------|
+| `shell=True` for editor | `editor.py:134` | ✅ Now uses `shlex.split()` + `shell=False` |
+| `shell=True` for /git | `commands.py:1003` | ✅ Now uses `shlex.split()` + `shell=False` |
+| `asyncio.run()` in skills | `skills/base.py`, `skills/command.py`, `skills/agent_skill.py` | ✅ Now uses `_run_async_safely()` helper |
+| `asyncio.run()` in preview | `coders/base_coder.py:1074` | ✅ Now uses `_run_async_safely()` helper |
+| `shell=True` for /run | `run_cmd.py:67` | ⚠️ Intentionally retained - explicit user shell command execution |
 
-These are acceptable because:
-1. Shell commands are explicitly user-requested (editor, /run, /git)
-2. Editor commands require shell parsing for arguments
-3. Skills system is not primary code path (main agent paths fixed)
-4. All critical async paths (A2A, agents, tools) have been hardened
+**Remaining accepted risk:**
+- `/run` command (`run_cmd.py:67`) intentionally uses `shell=True` as it's an explicit user shell command execution feature. Users are warned about security implications in documentation.
 
 ### Remaining Work (Non-Critical)
 
@@ -779,8 +763,8 @@ These are acceptable because:
 | `HOOKS_QUICKSTART.md` | Quick start for hooks | Users |
 | `SKILLS.md` | Skills system documentation | Users, Developers |
 | `OPENCLAW_HOOKS_DESIGN.md` | OpenClaw integration design | Developers |
-| `TOOL_SYSTEM_V2_SUMMARY.md` | Tools v2 architecture | Developers |
-| `TOOL_SYSTEM_SUMMARY.md` | Tools v1 overview | Developers |
+| `TOOL_SYSTEM_V2_SUMMARY.md` | Tool system architecture | Developers |
+| `TOOL_SYSTEM_SUMMARY.md` | DEPRECATED: Old tool docs | Developers |
 | `AGENTS_INTEGRATION.md` | Agent integration patterns | Developers |
 | `INTEGRATION_SUMMARY.md` | General integration patterns | Developers |
 | `COMPLETION_SUMMARY.md` | Completion system details | Developers |
@@ -795,7 +779,7 @@ These are acceptable because:
 | `HOOKS_README.md` | Hooks system documentation |
 | `SKILLS.md` | Skills system documentation |
 | `OPENCLAW_HOOKS_DESIGN.md` | OpenClaw integration design |
-| `TOOL_SYSTEM_V2_SUMMARY.md` | Tool system v2 documentation |
+| `TOOL_SYSTEM_V2_SUMMARY.md` | Tool system documentation |
 | `INTEGRATION_SUMMARY.md` | Integration patterns |
 | `.aider-hooks.yml.example` | Example hooks configuration |
 | `workflow.txt` | Development workflow phases |

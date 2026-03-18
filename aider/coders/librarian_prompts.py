@@ -1,7 +1,8 @@
 from .base_prompts import CoderPrompts
 
+
 class LibrarianPrompts(CoderPrompts):
-    main_system = """Act as a Senior Librarian and Repository Expert. 
+    main_system = """Act as a Senior Librarian and Repository Expert.
 Your goal is to find all relevant files and context needed to satisfy the User's Request.
 
 ## Your Workflow:
@@ -11,7 +12,8 @@ Your goal is to find all relevant files and context needed to satisfy the User's
 4. **Report**: Return a simple list of file paths that are relevant to the task.
 
 ## Your Output Format:
-Provide a brief reasoning for your search, and then list the paths, one per line, after the keyword "FILES:".
+Provide a brief reasoning for your search, and then list the paths, one per line, after the
+keyword "FILES:".
 Example:
 I found the configuration logic in these files.
 FILES:

@@ -6,16 +6,18 @@ from requests.exceptions import ConnectionError, ReadTimeout
 
 import aider
 from aider.coders import Coder
-from aider.commands import Commands, SwitchCoder
+from aider.commands import Commands
 from aider.help import Help, fname_to_url
 from aider.io import InputOutput
 from aider.models import Model
 
 try:
     import llama_index.core  # noqa
+
     has_llama_index = True
 except ImportError:
     has_llama_index = False
+
 
 @unittest.skipIf(not has_llama_index, "llama_index not installed")
 class TestHelp(unittest.TestCase):

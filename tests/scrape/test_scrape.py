@@ -6,6 +6,7 @@ from aider.commands import Commands
 from aider.io import InputOutput
 from aider.scrape import Scraper, has_playwright
 
+
 class TestScrape(unittest.TestCase):
     @unittest.skipIf(not has_playwright(), "Playwright not installed")
     def test_scrape_self_signed_ssl(self):

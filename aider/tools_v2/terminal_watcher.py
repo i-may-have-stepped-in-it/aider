@@ -1,14 +1,15 @@
-
-import subprocess
-import threading
 import collections
-import time
 import os
 import signal
-from typing import Dict, List, Optional, Deque
+import subprocess
+import threading
+import time
+from typing import Deque, Dict, List, Optional
+
 
 class BackgroundProcess:
     """A monitored background process with a rolling log buffer."""
+
     def __init__(self, name: str, command: List[str], cwd: str, max_buffer: int = 1000):
         self.name = name
         self.command = command
@@ -25,7 +26,7 @@ class BackgroundProcess:
         try:
             # Platform dependent preexec_fn
             preexec = os.setsid if hasattr(os, "setsid") else None
-            
+
             self.process = subprocess.Popen(
                 self.command,
                 stdin=subprocess.PIPE,
@@ -34,7 +35,7 @@ class BackgroundProcess:
                 text=True,
                 cwd=self.cwd,
                 bufsize=1,
-                preexec_fn=preexec
+                preexec_fn=preexec,
             )
             self.running = True
             self.thread = threading.Thread(target=self._read_loop, daemon=True)
@@ -52,7 +53,7 @@ class BackgroundProcess:
                 # Log the input so it appears in /watch read
                 with self._buffer_lock:
                     self.buffer.append(f">> INPUT: {text.rstrip()}")
-                
+
                 self.process.stdin.write(text)
                 self.process.stdin.flush()
                 return True
@@ -76,8 +77,9 @@ class BackgroundProcess:
         return False
 
     def _read_loop(self):
-        for line in iter(self.process.stdout.readline, ''):
-            if not line: break
+        for line in iter(self.process.stdout.readline, ""):
+            if not line:
+                break
             with self._buffer_lock:
                 self.buffer.append(line.rstrip())
         self.running = False
@@ -107,19 +109,22 @@ class BackgroundProcess:
                     pass
         self.process = None
 
+
 class TerminalWatcher:
     """Manages multiple background processes for Aider."""
+
     def __init__(self):
         self.processes: Dict[str, BackgroundProcess] = {}
 
     def start_process(self, name: str, command: str, cwd: str) -> bool:
         if name in self.processes:
             self.stop_process(name)
-        
+
         # Simple shell split or use shlex
         import shlex
+
         cmd_args = shlex.split(command)
-        
+
         proc = BackgroundProcess(name, cmd_args, cwd)
         if proc.start():
             self.processes[name] = proc

@@ -1,7 +1,7 @@
 
 [project]
-name = "aider-chat"
-description = "Aider is AI pair programming in your terminal"
+name = "openclaw-aider"
+description = "OpenClaw Aider - Security-hardened fork of Aider AI pair programming tool"
 readme = "README.md"
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -18,12 +18,13 @@ classifiers = [
     "Topic :: Software Development",
 ]
 requires-python = ">=3.10,<3.15"
-dynamic = ["dependencies", "optional-dependencies", "version"]
+version = "2.0.10"
 
 [project.urls]
-Homepage = "https://github.com/Aider-AI/aider"
+Homepage = "https://github.com/i-may-have-stepped-in-it/aider"
 
 [project.scripts]
+openclaw-aider = "aider.main:main"
 aider = "aider.main:main"
 
 [tool.setuptools.dynamic]
@@ -35,6 +36,10 @@ help = { file = "requirements/requirements-help.txt" }
 browser = { file = "requirements/requirements-browser.txt" }
 playwright = { file = "requirements/requirements-playwright.txt" }
 
+[tool.setuptools_scm]
+# Disabled - using static versioning
+version_file = "aider/_version.py"
+
 [tool.setuptools]
 include-package-data = true
 
@@ -45,8 +50,7 @@ include = ["aider"]
 requires = ["setuptools>=68", "setuptools_scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools_scm]
-write_to = "aider/_version.py"
+# Static versioning - setuptools_scm disabled
 
 [tool.codespell]
 skip = "*.svg,Gemfile.lock,tests/fixtures/*,aider/website/assets/*"

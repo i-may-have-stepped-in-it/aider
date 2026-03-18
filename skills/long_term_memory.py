@@ -9,11 +9,9 @@ This skill provides persistent context across sessions:
 """
 
 import json
-import asyncio
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from .base import Skill, SkillContext, SkillResult
 
@@ -21,6 +19,7 @@ from .base import Skill, SkillContext, SkillResult
 @dataclass
 class MemoryEntry:
     """Represents a memory entry."""
+
     id: str
     type: str  # "code_pattern", "user_preference", "project_knowledge", "decision"
     content: str
@@ -35,6 +34,7 @@ class MemoryEntry:
 @dataclass
 class ProjectKnowledge:
     """Project-specific knowledge."""
+
     project_name: str
     files: List[str] = field(default_factory=list)
     patterns: List[str] = field(default_factory=list)
@@ -84,7 +84,7 @@ class LongTermMemorySkill(Skill):
             type=mem_type,
             content=content,
             tags=kwargs.get("tags", []),
-            context=kwargs.get("context", {})
+            context=kwargs.get("context", {}),
         )
 
         self._memory[entry_id] = entry
@@ -100,8 +100,8 @@ class LongTermMemorySkill(Skill):
             data={
                 "entry_id": entry_id,
                 "type": mem_type,
-                "content": content[:100] + "..." if len(content) > 100 else content
-            }
+                "content": content[:100] + "..." if len(content) > 100 else content,
+            },
         )
 
     def _update_project(self, project_name: str, entry: MemoryEntry):
@@ -117,11 +117,9 @@ class LongTermMemorySkill(Skill):
 
         # Add to decisions if applicable
         if entry.type == "decision":
-            project.decisions.append({
-                "content": entry.content,
-                "created_at": entry.created_at,
-                "context": entry.context
-            })
+            project.decisions.append(
+                {"content": entry.content, "created_at": entry.created_at, "context": entry.context}
+            )
 
         # Keep only recent decisions
         if len(project.decisions) > 50:
@@ -135,7 +133,7 @@ class LongTermMemorySkill(Skill):
         content: str,
         tags: Optional[List[str]] = None,
         context: Optional[Dict[str, Any]] = None,
-        project: Optional[str] = None
+        project: Optional[str] = None,
     ) -> str:
         """Add a memory entry."""
         entry_id = f"memory_{len(self._memory) + 1}"
@@ -145,7 +143,7 @@ class LongTermMemorySkill(Skill):
             content=content,
             tags=tags or [],
             context=context or {},
-            relevance_score=0.0
+            relevance_score=0.0,
         )
 
         self._memory[entry_id] = entry
@@ -155,11 +153,7 @@ class LongTermMemorySkill(Skill):
 
         return entry_id
 
-    def retrieve_memory(
-        self,
-        query: str,
-        limit: int = 10
-    ) -> List[MemoryEntry]:
+    def retrieve_memory(self, query: str, limit: int = 10) -> List[MemoryEntry]:
         """Retrieve relevant memories."""
         # Simple keyword matching
         relevant = []
@@ -230,7 +224,7 @@ class LongTermMemorySkill(Skill):
             "total_entries": total_entries,
             "total_projects": total_projects,
             "by_type": by_type,
-            "by_tag": dict(sorted(by_tag.items(), key=lambda x: x[1], reverse=True)[:10])
+            "by_tag": dict(sorted(by_tag.items(), key=lambda x: x[1], reverse=True)[:10]),
         }
 
     def clear_memory(self, entry_id: Optional[str] = None):
@@ -252,7 +246,7 @@ class LongTermMemorySkill(Skill):
                     "context": entry.context,
                     "created_at": entry.created_at,
                     "last_accessed": entry.last_accessed,
-                    "access_count": entry.access_count
+                    "access_count": entry.access_count,
                 }
                 for entry_id, entry in self._memory.items()
             },
@@ -261,18 +255,18 @@ class LongTermMemorySkill(Skill):
                     "files": project.files,
                     "patterns": project.patterns,
                     "decisions": project.decisions,
-                    "last_updated": project.last_updated
+                    "last_updated": project.last_updated,
                 }
                 for name, project in self._projects.items()
-            }
+            },
         }
 
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             json.dump(data, f, indent=2)
 
     def load_from_file(self, filepath: str):
         """Load memory from file."""
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             data = json.load(f)
 
         self._memory.clear()
@@ -286,7 +280,7 @@ class LongTermMemorySkill(Skill):
                 context=entry_data.get("context", {}),
                 created_at=entry_data.get("created_at", datetime.now()),
                 last_accessed=entry_data.get("last_accessed", datetime.now()),
-                access_count=entry_data.get("access_count", 0)
+                access_count=entry_data.get("access_count", 0),
             )
 
         self._projects.clear()
@@ -297,14 +291,11 @@ class LongTermMemorySkill(Skill):
                 files=project_data.get("files", []),
                 patterns=project_data.get("patterns", []),
                 decisions=project_data.get("decisions", []),
-                last_updated=project_data.get("last_updated", datetime.now())
+                last_updated=project_data.get("last_updated", datetime.now()),
             )
 
     async def get_relevant_context(
-        self,
-        query: str,
-        max_entries: int = 10,
-        project: Optional[str] = None
+        self, query: str, max_entries: int = 10, project: Optional[str] = None
     ) -> Dict[str, Any]:
         """Get relevant context for a query."""
         # Get project-specific knowledge
@@ -315,7 +306,7 @@ class LongTermMemorySkill(Skill):
                 "project": project,
                 "files": project_data.files,
                 "patterns": project_data.patterns[-10:],  # Last 10 patterns
-                "decisions": project_data.decisions[-5:]  # Last 5 decisions
+                "decisions": project_data.decisions[-5:],  # Last 5 decisions
             }
 
         # Get relevant memories
@@ -329,10 +320,10 @@ class LongTermMemorySkill(Skill):
                     "type": m.type,
                     "content": m.content,
                     "tags": m.tags,
-                    "relevance": m.relevance_score
+                    "relevance": m.relevance_score,
                 }
                 for m in memories
-            ]
+            ],
         }
 
     async def forget_old_memories(self):
@@ -341,9 +332,7 @@ class LongTermMemorySkill(Skill):
         cutoff = now - timedelta(seconds=self._entry_ttl)
 
         to_remove = [
-            entry_id
-            for entry_id, entry in self._memory.items()
-            if entry.created_at < cutoff
+            entry_id for entry_id, entry in self._memory.items() if entry.created_at < cutoff
         ]
 
         for entry_id in to_remove:

@@ -10,17 +10,20 @@ This skill provides approval workflows for critical operations:
 
 import asyncio
 import difflib
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from .base import Skill, SkillContext, SkillResult
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ApprovalRequest:
     """Represents a request for human approval."""
+
     id: str
     operation: str  # "apply_changes", "delete_file", "deploy", etc.
     description: str
@@ -75,7 +78,7 @@ class HumanApprovalSkill(Skill):
             description=description,
             diff=kwargs.get("diff"),
             files=kwargs.get("files", []),
-            metadata=kwargs
+            metadata=kwargs,
         )
 
         self._approval_requests[request_id] = request
@@ -99,8 +102,8 @@ class HumanApprovalSkill(Skill):
                 "request_id": request_id,
                 "approved": request.approved,
                 "operation": operation,
-                "description": description
-            }
+                "description": description,
+            },
         )
 
     async def approve(self, request_id: str, approved_by: Optional[str] = None) -> SkillResult:
@@ -139,9 +142,9 @@ class HumanApprovalSkill(Skill):
             new_content.splitlines(keepends=True),
             fromfile=filename,
             tofile=filename,
-            lineterm=''
+            lineterm="",
         )
-        return ''.join(diff)
+        return "".join(diff)
 
     def get_pending_requests(self) -> List[ApprovalRequest]:
         """Get all pending approval requests."""
@@ -179,7 +182,7 @@ class HumanApprovalSkill(Skill):
                 "description": r.description,
                 "files": r.files,
                 "approved": r.approved,
-                "created_at": r.created_at
+                "created_at": r.created_at,
             }
             for r in self._approval_requests.values()
         ]

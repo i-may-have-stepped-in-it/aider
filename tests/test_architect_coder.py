@@ -3,10 +3,11 @@
 Comprehensive test suite for ArchitectCoder - Phase 1
 """
 
-import pytest
 import asyncio
-from unittest.mock import Mock, MagicMock, AsyncMock, patch
 from pathlib import Path
+from unittest.mock import Mock, patch
+
+import pytest
 
 
 class TestArchitectPhaseDiscovery:
@@ -26,29 +27,25 @@ class TestArchitectPhaseDiscovery:
         coder.abs_root_path = Mock(return_value="/fake/root/file.py")
 
         # Mock file discovery
-        with patch.object(Path, 'rglob') as mock_rglob:
+        with patch.object(Path, "rglob") as mock_rglob:
             mock_files = [
                 Path("/fake/root/auth.py"),
                 Path("/fake/root/database.py"),
-                Path("/fake/root/utils.py")
+                Path("/fake/root/utils.py"),
             ]
             mock_rglob.return_value = iter(mock_files)
 
             # Mock file existence
-            with patch('os.path.isfile', return_value=True):
+            with patch("os.path.isfile", return_value=True):
                 # Create architect instance
-                architect = ArchitectCoder(
-                    io=Mock(),
-                    main_model=Mock(),
-                    from_coder=Mock()
-                )
+                architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
                 architect.root = "/fake/root"
 
                 # Perform research
                 await architect.perform_research("database queries")
 
                 # Verify files were added
-                assert architect.research_done == True
+                assert architect.research_done is True
                 assert len(architect.abs_fnames) > 0
 
     @pytest.mark.asyncio
@@ -56,19 +53,15 @@ class TestArchitectPhaseDiscovery:
         """Test that librarian phase limits to 10 files."""
         from aider.coders.architect_coder import ArchitectCoder
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
         architect.root = "/fake/root"
 
         # Mock file discovery with 15 files
-        with patch.object(Path, 'rglob') as mock_rglob:
+        with patch.object(Path, "rglob") as mock_rglob:
             mock_files = [Path(f"/fake/root/file{i}.py") for i in range(15)]
             mock_rglob.return_value = iter(mock_files)
 
-            with patch('os.path.isfile', return_value=True):
+            with patch("os.path.isfile", return_value=True):
                 await architect.perform_research("test")
 
                 # Should limit to 10 files
@@ -84,11 +77,7 @@ class TestArchitectStructuralCritique:
         from aider.coders.architect_coder import ArchitectCoder
         from aider.coders.reviewer_prompts import ReviewerPrompts
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
         architect.gpt_prompts = ReviewerPrompts()
 
         plan = "Change database connection to use connection pool"
@@ -104,11 +93,7 @@ class TestArchitectStructuralCritique:
         from aider.coders.architect_coder import ArchitectCoder
         from aider.coders.reviewer_prompts import ReviewerPrompts
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
         architect.gpt_prompts = ReviewerPrompts()
 
         # Provide a problematic plan
@@ -126,13 +111,8 @@ class TestArchitectA2ACommunication:
     async def test_a2a_find_file_command(self):
         """Test A2A file discovery command."""
         from aider.coders.architect_coder import ArchitectCoder
-        from aider.a2a.types import A2AMessageType, A2AResponse
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
 
         # Mock A2A bus
         architect.a2a_bus = Mock()
@@ -140,12 +120,7 @@ class TestArchitectA2ACommunication:
         architect.a2a_bus._loop = asyncio.get_event_loop()
 
         # Create system request
-        message = {
-            "content": {
-                "command": "find_file",
-                "parameters": {"pattern": "*.py"}
-            }
-        }
+        message = {"content": {"command": "find_file", "parameters": {"pattern": "*.py"}}}
 
         # Handle request
         architect._on_system_request(message)
@@ -158,30 +133,21 @@ class TestArchitectA2ACommunication:
         """Test that A2A file discovery limits to 10 files."""
         from aider.coders.architect_coder import ArchitectCoder
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
         architect.root = "/fake/root"
 
         # Mock file discovery with 20 files
-        with patch.object(Path, 'rglob') as mock_rglob:
+        with patch.object(Path, "rglob") as mock_rglob:
             mock_files = [Path(f"/fake/root/file{i}.py") for i in range(20)]
             mock_rglob.return_value = iter(mock_files)
 
-            with patch('os.path.isfile', return_value=True):
+            with patch("os.path.isfile", return_value=True):
                 # Mock A2A bus
                 architect.a2a_bus = Mock()
                 architect.a2a_bus._loop = asyncio.get_event_loop()
 
                 # Handle request
-                message = {
-                    "content": {
-                        "command": "find_file",
-                        "parameters": {"pattern": "*.py"}
-                    }
-                }
+                message = {"content": {"command": "find_file", "parameters": {"pattern": "*.py"}}}
 
                 architect._on_system_request(message)
 
@@ -196,11 +162,7 @@ class TestArchitectRecursiveCorrection:
         """Test that max_critiques limits correction iterations."""
         from aider.coders.architect_coder import ArchitectCoder
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
         architect.max_critiques = 2
 
         # Simulate multiple critiques
@@ -220,11 +182,7 @@ class TestArchitectProactiveMonitoring:
         """Test that proactive monitoring detects errors in logs."""
         from aider.coders.architect_coder import ArchitectCoder
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
 
         # Mock tool router with processes
         mock_tool_router = Mock()
@@ -234,12 +192,10 @@ class TestArchitectProactiveMonitoring:
             "INFO: Server started",
             "INFO: Connection established",
             "ERROR: Database connection failed",
-            "ERROR: Query timeout"
+            "ERROR: Query timeout",
         ]
 
-        mock_tool_router.terminal_watcher.processes = {
-            "server": mock_process
-        }
+        mock_tool_router.terminal_watcher.processes = {"server": mock_process}
 
         architect.tool_router = mock_tool_router
 
@@ -255,20 +211,14 @@ class TestArchitectProactiveMonitoring:
         """Test that proactive monitoring handles stopped processes."""
         from aider.coders.architect_coder import ArchitectCoder
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
 
         # Mock tool router with stopped process
         mock_tool_router = Mock()
         mock_process = Mock()
         mock_process.is_running.return_value = False
 
-        mock_tool_router.terminal_watcher.processes = {
-            "server": mock_process
-        }
+        mock_tool_router.terminal_watcher.processes = {"server": mock_process}
 
         architect.tool_router = mock_tool_router
 
@@ -287,11 +237,7 @@ class TestArchitectAgentDelegation:
         """Test that architect can delegate to specialist agents."""
         from aider.coders.architect_coder import ArchitectCoder
 
-        architect = ArchitectCoder(
-            io=Mock(),
-            main_model=Mock(),
-            from_coder=Mock()
-        )
+        architect = ArchitectCoder(io=Mock(), main_model=Mock(), from_coder=Mock())
 
         # Should be able to create reviewer
         reviewer_kwargs = dict(

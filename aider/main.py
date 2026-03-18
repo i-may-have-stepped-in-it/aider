@@ -28,6 +28,7 @@ from aider.copypaste import ClipboardWatcher
 from aider.deprecated import handle_deprecated_model_args
 from aider.format_settings import format_settings, scrub_sensitive_info
 from aider.history import ChatSummary
+from aider.hooks import create_hooks_manager
 from aider.io import InputOutput
 from aider.llm import litellm  # noqa: F401; properly init litellm on launch
 from aider.models import ModelSettings
@@ -36,7 +37,6 @@ from aider.repo import ANY_GIT_ERROR, GitRepo
 from aider.report import report_uncaught_exceptions
 from aider.versioncheck import check_version, install_from_main_branch, install_upgrade
 from aider.watch import FileWatcher
-from aider.hooks import create_hooks_manager
 
 from .dump import dump  # noqa: F401
 
@@ -663,22 +663,22 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         analytics.enable()
 
     analytics.event("launched")
-    
+
     # Initialize hooks manager
     hooks_manager = None
     if args.hooks_dir or args.enable_skills:
         hooks_manager = create_hooks_manager(io=io, verbose=args.verbose)
-        
+
         # Load hooks from directory if specified
         if args.hooks_dir:
             num_loaded = hooks_manager.load_hooks_from_directory(args.hooks_dir)
             if args.verbose:
                 io.tool_output(f"Loaded {num_loaded} hook files from {args.hooks_dir}")
-        
+
         # Load skills if enabled
         if args.enable_skills and args.skill_path:
             hooks_manager.load_skills(args.skill_path)
-        
+
         # Execute on_init hooks
         hooks_manager.execute("on_init", args=args, io=io)
 
@@ -1060,11 +1060,11 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         ClipboardWatcher(coder.io, verbose=args.verbose)
 
     coder.show_announcements()
-    
+
     # Store hooks manager reference on coder for easy access
     if hooks_manager:
         coder.hooks_manager = hooks_manager
-    
+
     if args.show_prompts:
         coder.cur_messages += [
             dict(role="user", content="Hello!"),
@@ -1149,6 +1149,7 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
 
     if args.mcp:
         from aider.mcp.server import AiderMCPServer
+
         server = AiderMCPServer(coder)
         try:
             server.start()
@@ -1193,7 +1194,7 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         try:
             coder.ok_to_warm_cache = bool(args.cache_keepalive_pings)
             coder.run()
-            
+
             # Execute on_exit hooks
             if hooks_manager:
                 try:
@@ -1201,12 +1202,12 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
                 except Exception as e:
                     if hooks_manager.verbose:
                         io.tool_error(f"Hook error (on_exit): {e}")
-            
+
             analytics.event("exit", reason="Completed main CLI coder.run")
             return
         except SwitchCoder as switch:
             coder.ok_to_warm_cache = False
-            
+
             # Transfer hooks manager to new coder
             if hooks_manager:
                 coder.hooks_manager = hooks_manager

@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import locale
+import logging
 import math
 import mimetypes
 import os
@@ -30,10 +31,13 @@ from typing import List
 from rich.console import Console
 
 from aider import __version__, models, prompts, urls, utils
+from aider.agents.loop import AutonomousAgent
 from aider.analytics import Analytics
 from aider.commands import Commands
 from aider.exceptions import LiteLLMExceptions
 from aider.history import ChatSummary
+from aider.hooks import get_hooks_manager
+from aider.indexers.semantic import SemanticIndexer
 from aider.io import ConfirmGroup, InputOutput
 from aider.linter import Linter
 from aider.llm import litellm
@@ -47,15 +51,21 @@ from aider.reasoning_tags import (
 from aider.repo import ANY_GIT_ERROR, GitRepo
 from aider.repomap import RepoMap
 from aider.run_cmd import run_cmd
-from aider.indexers.semantic import SemanticIndexer
-from aider.agents.loop import AutonomousAgent
-from aider.utils import format_content, format_messages, format_tokens, is_image_file, is_video_file, is_audio_file
+from aider.utils import (
+    format_content,
+    format_messages,
+    format_tokens,
+    is_audio_file,
+    is_image_file,
+    is_video_file,
+)
 from aider.waiting import WaitingSpinner
-from aider.hooks import get_hooks_manager
 
 from ..dump import dump  # noqa: F401
 from .chat_chunks import ChatChunks
 from .chat_history import ChatHistory
+
+logger = logging.getLogger(__name__)
 
 
 class UnknownEditFormat(ValueError):
@@ -324,12 +334,14 @@ class Coder:
             if map_tokens > 0:
                 refresh = self.repo_map.refresh
                 lines.append(f"Repo-map: using {map_tokens} tokens, {refresh} refresh")
-                max_map_tokens = self.main_model.get_repo_map_tokens() * 2
-                if map_tokens > max_map_tokens:
-                    lines.append(
-                        f"Warning: map-tokens > {max_map_tokens} is not recommended. Too much"
-                        " irrelevant code can confuse LLMs."
-                    )
+                base_map_tokens = self.main_model.get_repo_map_tokens()
+                if isinstance(base_map_tokens, (int, float)):
+                    max_map_tokens = base_map_tokens * 2
+                    if map_tokens > max_map_tokens:
+                        lines.append(
+                            f"Warning: map-tokens > {max_map_tokens} is not recommended. Too much"
+                            " irrelevant code can confuse LLMs."
+                        )
             else:
                 lines.append("Repo-map: disabled because map_tokens == 0")
         else:
@@ -408,13 +420,15 @@ class Coder:
 
         self.use_semantic_index = use_semantic_index
         self.semantic_indexer = None
-            
+
         from aider.a2a.bus import A2AMessageBus
+
         self.a2a_bus = A2AMessageBus()
-        
+
         from aider.skills.registry import get_registry
+
         self.skills_registry = get_registry()
-        
+
         self.autonomous_agent = AutonomousAgent(self, max_turns=5, max_cost=2.0)
 
         self.event = self.analytics.event
@@ -481,7 +495,8 @@ class Coder:
 
         # Initialize ChatHistory
         self.chat_history = ChatHistory(
-            summarizer=summarizer or ChatSummary(
+            summarizer=summarizer
+            or ChatSummary(
                 [self.main_model.weak_model, self.main_model],
                 self.main_model.max_chat_history_tokens,
             ),
@@ -549,12 +564,33 @@ class Coder:
             self.root = utils.find_common_root(self.abs_fnames)
 
         if self.use_semantic_index:
-            self.semantic_indexer = SemanticIndexer(self.root)
-            # PARITY+: Proactively update index on startup
+            kwargs = {}
+            if self.main_model.embedding_model_name and isinstance(
+                self.main_model.embedding_model_name, str
+            ):
+                kwargs["model_name"] = self.main_model.embedding_model_name
+            if self.main_model.embedding_api_base and isinstance(
+                self.main_model.embedding_api_base, str
+            ):
+                kwargs["api_base"] = self.main_model.embedding_api_base
+            self.semantic_indexer = SemanticIndexer(self.root, **kwargs)
+
+            # PARITY+: Background Semantic Indexing
             if self.repo:
-                self.io.tool_output("Updating semantic index...")
-                files = self.repo.get_all_relative_files()
-                self.semantic_indexer.update_index(files)
+
+                def run_background_index():
+                    try:
+                        files = self.get_all_relative_files()
+                        self.semantic_indexer.update_index(files)
+                        # self.io.tool_output("Semantic index update complete.")
+                    except Exception as e:
+                        logger.error(f"Background indexing failed: {e}")
+
+                import threading
+
+                self.io.tool_output("Updating semantic index in background...")
+                indexing_thread = threading.Thread(target=run_background_index, daemon=True)
+                indexing_thread.start()
 
         if read_only_fnames:
             self.abs_read_only_fnames = set()
@@ -907,14 +943,19 @@ class Coder:
         multimodal_messages = []
         for fname in fnames:
             rel_fname = self.get_rel_fname(fname)
-            
+
             if is_video_file(fname) and supports_video:
                 frames = self.io.read_video(fname)
                 if frames:
-                    multimodal_messages += [{"type": "text", "text": f"Video file (frames): {rel_fname}"}]
+                    multimodal_messages += [
+                        {"type": "text", "text": f"Video file (frames): {rel_fname}"}
+                    ]
                     for frame_base64 in frames:
                         multimodal_messages += [
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"}}
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{frame_base64}"},
+                            }
                         ]
                 continue
 
@@ -922,10 +963,13 @@ class Coder:
                 audio_base64 = self.io.read_audio(fname)
                 if audio_base64:
                     mime_type, _ = mimetypes.guess_type(fname)
-                    audio_format = mime_type.split('/')[-1] if mime_type else "wav"
+                    audio_format = mime_type.split("/")[-1] if mime_type else "wav"
                     multimodal_messages += [
                         {"type": "text", "text": f"Audio file: {rel_fname}"},
-                        {"type": "input_audio", "input_audio": {"data": audio_base64, "format": audio_format}}
+                        {
+                            "type": "input_audio",
+                            "input_audio": {"data": audio_base64, "format": audio_format},
+                        },
                     ]
                 continue
 
@@ -959,7 +1003,7 @@ class Coder:
     def run_stream(self, user_message):
         self.io.user_input(user_message)
         self.init_before_message()
-        
+
         # Execute pre-send hooks
         hooks = get_hooks_manager()
         if hooks:
@@ -970,9 +1014,9 @@ class Coder:
             except Exception as e:
                 if hooks.verbose:
                     self.io.tool_error(f"Hook error (pre_send): {e}")
-        
+
         yield from self.send_message(user_message)
-        
+
         # Execute post-send hooks
         if hooks:
             try:
@@ -1065,16 +1109,19 @@ class Coder:
                     content = last_assistant_msg.get("content", "")
                     if "```mermaid" in content or "```html" in content or "```svg" in content:
                         import threading
-                        import asyncio
-                        
+
                         def run_preview():
                             try:
-                                preview_skill = self.skills_registry.create("artifact-preview", self)
+                                preview_skill = self.skills_registry.create(
+                                    "artifact-preview", self
+                                )
                                 if preview_skill:
-                                    asyncio.run(preview_skill.execute(content))
+                                    from aider.skills.base import _run_async_safely
+
+                                    _run_async_safely(preview_skill.execute(content))
                             except Exception as e:
                                 self.io.tool_error(f"Artifact preview failed: {e}")
-                        
+
                         # Run in background to avoid blocking the UI thread
                         threading.Thread(target=run_preview, daemon=True).start()
                 break
@@ -1150,7 +1197,7 @@ class Coder:
 
         if self.verbose:
             self.io.tool_output("Starting to summarize chat history.")
-        
+
         # Execute pre-summarize hooks
         hooks = get_hooks_manager()
         if hooks:
@@ -1172,7 +1219,7 @@ class Coder:
 
         if self.verbose:
             self.io.tool_output("Finished summarizing chat history.")
-        
+
         # Execute post-summarize hooks
         hooks = get_hooks_manager()
         if hooks:
@@ -2486,7 +2533,7 @@ class Coder:
         try:
             edits = self.get_edits()
             edits = self.apply_edits_dry_run(edits)
-            
+
             # Execute pre-edit hooks
             hooks = get_hooks_manager()
             if hooks:
@@ -2497,7 +2544,7 @@ class Coder:
                 except Exception as e:
                     if hooks.verbose:
                         self.io.tool_error(f"Hook error (pre_edit): {e}")
-            
+
             edits = self.prepare_to_edit(edits)
             edited = set(edit[0] for edit in edits)
 
@@ -2538,7 +2585,7 @@ class Coder:
                 self.io.tool_output(f"Did not apply edit to {path} (--dry-run)")
             else:
                 self.io.tool_output(f"Applied edit to {path}")
-        
+
         # Execute post-edit hooks
         if hooks:
             try:

@@ -20,49 +20,49 @@ Key Components:
 
 Usage:
     from aider.tools_v2 import ToolRouterV2, create_sandbox
-    
+
     router = ToolRouterV2(commands, io, coder)
     result = router.execute("run", {"command": "pytest"})
 
-Migration from v1:
-    v1: from aider.tools import ToolRouter
+Migration from v1 (DEPRECATED):
+    v1: from aider.tools import ToolRouter  # DEPRECATED
     v2: from aider.tools_v2 import ToolRouterV2
-    
+
+    v1 is deprecated and will be removed in a future version.
     v2 is a complete rewrite with incompatible but improved API.
 """
 
 from .async_executor import (
+    AsyncExecutionError,
     AsyncExecutor,
-    async_context,
-    run_async,
     CancellableTask,
     ExecutionTimeoutError,
-    AsyncExecutionError,
+    async_context,
+    run_async,
 )
-from .sandbox import (
-    create_sandbox,
-    Sandbox,
-    SandboxResult,
-    
-    FirejailSandbox,
-    AdvancedUnshareSandbox,
-    UnshareSandbox,
-    MinimalSandbox,
-)
-from .router import ToolRouterV2, ToolExecutionResult
-from .cost_tracker import AccurateCostTracker, CostBreakdown
 from .circuit_breaker import (
     CircuitBreaker,
     CircuitState,
-    TokenBucket,
     ExponentialBackoff,
     ResilientExecutor,
+    TokenBucket,
 )
 from .compression import (
-    SmartCompressor,
     CompressionResult,
-    OutputType,
     OutputCompressor,
+    OutputType,
+    SmartCompressor,
+)
+from .cost_tracker import AccurateCostTracker, CostBreakdown
+from .router import ToolExecutionResult, ToolRouterV2
+from .sandbox import (
+    AdvancedUnshareSandbox,
+    FirejailSandbox,
+    MinimalSandbox,
+    Sandbox,
+    SandboxResult,
+    UnshareSandbox,
+    create_sandbox,
 )
 
 __version__ = "2.0.0"
@@ -75,32 +75,26 @@ __all__ = [
     "CancellableTask",
     "ExecutionTimeoutError",
     "AsyncExecutionError",
-    
     # Sandboxing
     "Sandbox",
     "SandboxResult",
     "create_sandbox",
-    
     "FirejailSandbox",
     "AdvancedUnshareSandbox",
     "UnshareSandbox",
     "MinimalSandbox",
-    
     # Tool routing
     "ToolRouterV2",
     "ToolExecutionResult",
-    
     # Cost tracking
     "AccurateCostTracker",
     "CostBreakdown",
-    
     # Resilience
     "CircuitBreaker",
     "CircuitState",
     "TokenBucket",
     "ExponentialBackoff",
     "ResilientExecutor",
-    
     # Compression
     "SmartCompressor",
     "CompressionResult",

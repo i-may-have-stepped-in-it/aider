@@ -10,17 +10,16 @@ This skill provides comprehensive code review with:
 
 import ast
 import re
-import asyncio
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
 from .base import Skill, SkillContext, SkillResult
 
 
 class IssueSeverity(Enum):
     """Severity levels for code review issues."""
+
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
@@ -29,6 +28,7 @@ class IssueSeverity(Enum):
 
 class IssueType(Enum):
     """Types of code review issues."""
+
     SECURITY = "security"
     PERFORMANCE = "performance"
     MAINTAINABILITY = "maintainability"
@@ -40,6 +40,7 @@ class IssueType(Enum):
 @dataclass
 class CodeIssue:
     """Represents a code review issue."""
+
     type: IssueType
     severity: IssueSeverity
     line: int
@@ -53,6 +54,7 @@ class CodeIssue:
 @dataclass
 class CodeReviewResult:
     """Result of code review."""
+
     success: bool
     issues: List[CodeIssue]
     summary: Dict[str, int]
@@ -109,18 +111,19 @@ class AdvancedCodeReviewSkill(Skill):
                         "column": issue.column,
                         "message": issue.message,
                         "code": issue.code,
-                        "suggestion": issue.suggestion
+                        "suggestion": issue.suggestion,
                     }
                     for issue in result.issues[:50]  # Limit to 50 issues
                 ],
                 "issue_count": len(result.issues),
-                "analysis_time": result.analysis_time
-            }
+                "analysis_time": result.analysis_time,
+            },
         )
 
     async def _review_code(self, code: str, file_path: str) -> CodeReviewResult:
         """Perform comprehensive code review."""
         import time
+
         start_time = time.time()
 
         issues = []
@@ -129,21 +132,23 @@ class AdvancedCodeReviewSkill(Skill):
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
-            issues.append(CodeIssue(
-                type=IssueType.ERROR,
-                severity=IssueSeverity.ERROR,
-                line=e.lineno,
-                column=e.offset,
-                message=f"Syntax error: {e.msg}",
-                code=e.text,
-                file_path=file_path
-            ))
+            issues.append(
+                CodeIssue(
+                    type=IssueType.ERROR,
+                    severity=IssueSeverity.ERROR,
+                    line=e.lineno,
+                    column=e.offset,
+                    message=f"Syntax error: {e.msg}",
+                    code=e.text,
+                    file_path=file_path,
+                )
+            )
             return CodeReviewResult(
                 success=False,
                 issues=issues,
                 summary={},
                 score=0.0,
-                analysis_time=time.time() - start_time
+                analysis_time=time.time() - start_time,
             )
 
         # Analyze code structure
@@ -162,7 +167,7 @@ class AdvancedCodeReviewSkill(Skill):
             issues=issues,
             summary=summary,
             score=score,
-            analysis_time=time.time() - start_time
+            analysis_time=time.time() - start_time,
         )
 
     def _analyze_syntax(self, tree: ast.AST) -> List[CodeIssue]:
@@ -174,22 +179,24 @@ class AdvancedCodeReviewSkill(Skill):
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    imports.add(alias.name.split('.')[0])
+                    imports.add(alias.name.split(".")[0])
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
-                    imports.add(node.module.split('.')[0])
+                    imports.add(node.module.split(".")[0])
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                 if node.id not in imports:
-                    issues.append(CodeIssue(
-                        type=IssueType.MAINTAINABILITY,
-                        severity=IssueSeverity.WARNING,
-                        line=node.lineno,
-                        column=node.col_offset,
-                        message=f"Unused variable '{node.id}'",
-                        file_path="unknown.py"
-                    ))
+                    issues.append(
+                        CodeIssue(
+                            type=IssueType.MAINTAINABILITY,
+                            severity=IssueSeverity.WARNING,
+                            line=node.lineno,
+                            column=node.col_offset,
+                            message=f"Unused variable '{node.id}'",
+                            file_path="unknown.py",
+                        )
+                    )
 
         return issues
 
@@ -201,26 +208,33 @@ class AdvancedCodeReviewSkill(Skill):
         complexity = self._calculate_cyclomatic_complexity(tree)
 
         if complexity > 10:
-            issues.append(CodeIssue(
-                type=IssueType.COMPLEXITY,
-                severity=IssueSeverity.WARNING,
-                line=0,
-                column=0,
-                message=f"High cyclomatic complexity ({complexity}). Consider refactoring.",
-                code=f"complexity={complexity}",
-                file_path="unknown.py"
-            ))
+            issues.append(
+                CodeIssue(
+                    type=IssueType.COMPLEXITY,
+                    severity=IssueSeverity.WARNING,
+                    line=0,
+                    column=0,
+                    message=f"High cyclomatic complexity ({complexity}). Consider refactoring.",
+                    code=f"complexity={complexity}",
+                    file_path="unknown.py",
+                )
+            )
 
         if complexity > 20:
-            issues.append(CodeIssue(
-                type=IssueType.COMPLEXITY,
-                severity=IssueSeverity.ERROR,
-                line=0,
-                column=0,
-                message=f"Very high cyclomatic complexity ({complexity}). Critical refactoring needed.",
-                code=f"complexity={complexity}",
-                file_path="unknown.py"
-            ))
+            issues.append(
+                CodeIssue(
+                    type=IssueType.COMPLEXITY,
+                    severity=IssueSeverity.ERROR,
+                    line=0,
+                    column=0,
+                    message=(
+                        f"Very high cyclomatic complexity ({complexity}). Critical refactoring"
+                        " needed."
+                    ),
+                    code=f"complexity={complexity}",
+                    file_path="unknown.py",
+                )
+            )
 
         return issues
 
@@ -249,15 +263,17 @@ class AdvancedCodeReviewSkill(Skill):
 
         for pattern in credential_patterns:
             for match in re.finditer(pattern, code):
-                issues.append(CodeIssue(
-                    type=IssueType.SECURITY,
-                    severity=IssueSeverity.ERROR,
-                    line=0,
-                    column=0,
-                    message=f"Hardcoded credential detected: {match.group(1)[:20]}...",
-                    suggestion="Use environment variables or secure secret management",
-                    file_path="unknown.py"
-                ))
+                issues.append(
+                    CodeIssue(
+                        type=IssueType.SECURITY,
+                        severity=IssueSeverity.ERROR,
+                        line=0,
+                        column=0,
+                        message=f"Hardcoded credential detected: {match.group(1)[:20]}...",
+                        suggestion="Use environment variables or secure secret management",
+                        file_path="unknown.py",
+                    )
+                )
 
         # Check for SQL injection patterns
         sql_patterns = [
@@ -267,15 +283,17 @@ class AdvancedCodeReviewSkill(Skill):
 
         for pattern in sql_patterns:
             if re.search(pattern, code, re.IGNORECASE):
-                issues.append(CodeIssue(
-                    type=IssueType.SECURITY,
-                    severity=IssueSeverity.ERROR,
-                    line=0,
-                    column=0,
-                    message="Potential SQL injection detected. Use parameterized queries.",
-                    suggestion="Use cursor.execute('SELECT * FROM users WHERE id = %s', (id,))",
-                    file_path="unknown.py"
-                ))
+                issues.append(
+                    CodeIssue(
+                        type=IssueType.SECURITY,
+                        severity=IssueSeverity.ERROR,
+                        line=0,
+                        column=0,
+                        message="Potential SQL injection detected. Use parameterized queries.",
+                        suggestion="Use cursor.execute('SELECT * FROM users WHERE id = %s', (id,))",
+                        file_path="unknown.py",
+                    )
+                )
 
         return issues
 
@@ -289,15 +307,17 @@ class AdvancedCodeReviewSkill(Skill):
                 # Check if there's a nested loop
                 for child in ast.walk(node):
                     if isinstance(child, ast.For) or isinstance(child, ast.While):
-                        issues.append(CodeIssue(
-                            type=IssueType.PERFORMANCE,
-                            severity=IssueSeverity.WARNING,
-                            line=node.lineno,
-                            column=node.col_offset,
-                            message="Nested loops detected. Potential O(n²) complexity.",
-                            code="nested_loops",
-                            file_path="unknown.py"
-                        ))
+                        issues.append(
+                            CodeIssue(
+                                type=IssueType.PERFORMANCE,
+                                severity=IssueSeverity.WARNING,
+                                line=node.lineno,
+                                column=node.col_offset,
+                                message="Nested loops detected. Potential O(n²) complexity.",
+                                code="nested_loops",
+                                file_path="unknown.py",
+                            )
+                        )
                         break
 
         return issues
@@ -329,7 +349,7 @@ class AdvancedCodeReviewSkill(Skill):
             "maintainability": 0,
             "style": 0,
             "error": 0,
-            "complexity": 0
+            "complexity": 0,
         }
 
         for issue in issues:
@@ -343,16 +363,12 @@ class AdvancedCodeReviewSkill(Skill):
     async def review_file(self, file_path: str) -> CodeReviewResult:
         """Review a specific file."""
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, "r") as f:
                 code = f.read()
             return await self._review_code(code, file_path)
-        except Exception as e:
+        except Exception:
             return CodeReviewResult(
-                success=False,
-                issues=[],
-                summary={},
-                score=0.0,
-                analysis_time=0.0
+                success=False, issues=[], summary={}, score=0.0, analysis_time=0.0
             )
 
     async def get_fixes(self, issue: CodeIssue) -> List[str]:
@@ -361,7 +377,9 @@ class AdvancedCodeReviewSkill(Skill):
 
         if issue.type == IssueType.SECURITY and "hardcoded" in issue.message.lower():
             fixes.append("Replace hardcoded credentials with environment variables")
-            fixes.append("Use a secure secret management system like AWS Secrets Manager or HashiCorp Vault")
+            fixes.append(
+                "Use a secure secret management system like AWS Secrets Manager or HashiCorp Vault"
+            )
 
         if issue.type == IssueType.SECURITY and "SQL injection" in issue.message.lower():
             fixes.append("Use parameterized queries")

@@ -1,14 +1,16 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+
 from ..context import ProjectContext
-from ..models import Model
 from ..io import InputOutput
+from ..models import Model
+
 
 class BaseAgent(ABC):
     """
     Stateless Base Agent class.
     Operates on a ProjectContext and uses a Model to perform tasks.
     """
+
     def __init__(self, context: ProjectContext, main_model: Model, io: InputOutput):
         self.context = context
         self.main_model = main_model

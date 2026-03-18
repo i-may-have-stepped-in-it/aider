@@ -1,10 +1,11 @@
-import time
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class MissionStats:
@@ -14,11 +15,13 @@ class MissionStats:
     active_agents: int = 0
     start_time: float = field(default_factory=time.time)
 
+
 class MissionGovernor:
     """
     Global safety governor for multi-agent missions.
     Prevents budget runaway and recursive agent explosion.
     """
+
     _instance = None
     _lock = threading.Lock()
 
@@ -67,13 +70,14 @@ class MissionGovernor:
     def get_report(self) -> str:
         duration = time.time() - self.stats.start_time
         return (
-            f"Mission Report:\n"
+            "Mission Report:\n"
             f"- Runtime: {duration:.1f}s\n"
             f"- Total Turns: {self.stats.total_turns}\n"
             f"- Active Agents: {self.stats.active_agents}\n"
             f"- Total Cost: ${self.stats.total_cost:.4f}\n"
             f"- Total Tokens: {self.stats.total_tokens}"
         )
+
 
 # Global singleton access
 def get_governor() -> MissionGovernor:

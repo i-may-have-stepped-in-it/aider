@@ -1,20 +1,6 @@
-from packaging import version
+# OpenClaw Aider - Security-Hardened Fork
+# Version: 2.0.10 - Lint clean for OpenClaw integration
+__version__ = "2.0.10"
+__version_info__ = (2, 0, 10)
 
-__version__ = "1.0.0-parity-plus"
-safe_version = __version__
-
-try:
-    from aider._version import __version__
-except Exception:
-    __version__ = safe_version + "+import"
-
-if type(__version__) is not str:
-    __version__ = safe_version + "+type"
-else:
-    try:
-        if version.parse(__version__) < version.parse(safe_version):
-            __version__ = safe_version + "+less"
-    except Exception:
-        __version__ = safe_version + "+parse"
-
-__all__ = [__version__]
+__all__ = ["__version__", "__version_info__"]

@@ -51,8 +51,8 @@ def try_to_select_default_model():
     """
     # If OPENAI_API_BASE is set, it's a strong indicator of an OpenAI-compatible endpoint.
     if os.environ.get("OPENAI_API_BASE"):
-        # Return gpt-4o as default for generic OpenAI endpoints
-        return "gpt-4o"
+        # Return openai/chat as default for generic OpenAI endpoints
+        return "openai/chat"
 
     # Select model based on available API keys
     model_key_pairs = [
@@ -233,7 +233,7 @@ def start_openrouter_oauth_flow(io, analytics):
 
     class OAuthCallbackHandler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self):
-            nonlocal auth_code, server_error
+            nonlocal auth_code
             parsed_path = urlparse(self.path)
             if parsed_path.path == "/callback/aider":
                 query_params = parse_qs(parsed_path.query)

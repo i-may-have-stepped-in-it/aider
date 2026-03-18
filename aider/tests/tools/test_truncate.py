@@ -5,13 +5,12 @@ truncates tool output to prevent context window overflow while preserving
 important information like errors and results.
 """
 
-import pytest
 from aider.tools.truncate import (
-    TruncationResult,
-    OutputTruncator,
     HeadOnlyTruncator,
-    TailOnlyTruncator,
     MiddleOutTruncator,
+    OutputTruncator,
+    TailOnlyTruncator,
+    TruncationResult,
     truncate_output,
 )
 
@@ -30,7 +29,7 @@ class TestTruncationResult:
             final_tokens=200,
             truncation_reason="Test truncation",
         )
-        
+
         assert result.content == "test content"
         assert result.was_truncated is True
         assert result.original_lines == 100
@@ -50,7 +49,7 @@ class TestTruncationResult:
             final_tokens=4,
             truncation_reason=None,
         )
-        
+
         assert result.was_truncated is False
         assert result.truncation_reason is None
 
@@ -60,7 +59,7 @@ class TestOutputTruncator:
 
     def test_estimate_tokens(self):
         """Verify token estimation uses character approximation.
-        
+
         Tokens are estimated as len(text) // 4 (APPROX_CHARS_PER_TOKEN = 4)
         """
         text = "a" * 100  # 100 characters
@@ -73,12 +72,12 @@ class TestOutputTruncator:
 
     def test_small_content_not_truncated(self):
         """Verify small content is not truncated.
-        
+
         Content under the token limit should be returned unchanged.
         """
         content = "This is a small piece of content.\nIt has only a few lines."
         result = OutputTruncator.truncate(content, max_tokens=1000)
-        
+
         assert result.was_truncated is False
         assert result.content == content
         assert result.original_lines == 2
@@ -88,7 +87,7 @@ class TestOutputTruncator:
     def test_empty_content_not_truncated(self):
         """Verify empty content is handled correctly."""
         result = OutputTruncator.truncate("", max_tokens=1000)
-        
+
         assert result.was_truncated is False
         assert result.content == ""
         assert result.original_lines == 0
@@ -97,62 +96,62 @@ class TestOutputTruncator:
     def test_whitespace_only_not_truncated(self):
         """Verify whitespace-only content is handled correctly."""
         result = OutputTruncator.truncate("   \n\n   ", max_tokens=1000)
-        
+
         assert result.was_truncated is False
 
     def test_large_content_truncated(self):
         """Verify large content is truncated.
-        
+
         Content exceeding max_tokens should be truncated.
         """
         # Create content that will exceed 100 tokens (~400 chars)
         lines = [f"Line {i}: This is some test content." for i in range(50)]
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=100)
-        
+
         assert result.was_truncated is True
         assert result.final_lines < result.original_lines
         assert "truncated" in result.truncation_reason.lower()
 
     def test_truncation_preserves_head(self):
         """Verify truncation preserves head section.
-        
+
         The first part of the content should be preserved.
         """
         lines = [f"Line {i}: test content" for i in range(100)]
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=50)
-        
+
         # First line should be present
         assert "Line 0:" in result.content
 
     def test_truncation_preserves_tail(self):
         """Verify truncation preserves tail section.
-        
+
         The last part of the content should be preserved.
         """
         lines = [f"Line {i}: test content" for i in range(100)]
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=50)
-        
+
         # Last line should be present
         assert "Line 99:" in result.content
 
     def test_error_pattern_preservation(self):
         """Verify error patterns are preserved in truncation.
-        
+
         Error lines in the middle should be preserved even if truncated.
         """
         lines = [f"Line {i}: normal content" for i in range(50)]
         # Insert error in the middle
         lines[25] = "Error: Something went wrong!"
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=50)
-        
+
         # Error line should be preserved
         assert "Error: Something went wrong!" in result.content
 
@@ -168,14 +167,14 @@ Traceback (most recent call last):
 ValueError: test error
 Line 50: More content here
 Line 51: Even more content"""
-        
+
         # Add more lines to force truncation
         lines = content.split("\n")
         lines.extend([f"Line {i}: filler" for i in range(52, 150)])
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=100)
-        
+
         # Traceback should be preserved
         assert "Traceback (most recent call last):" in result.content
         assert "ValueError: test error" in result.content
@@ -183,14 +182,14 @@ Line 51: Even more content"""
     def test_multiple_error_patterns(self):
         """Verify multiple error patterns are all preserved."""
         lines = [f"Line {i}: normal" for i in range(100)]
-        lines[20] = "File \"test.py\", line 10"
+        lines[20] = 'File "test.py", line 10'
         lines[30] = "SyntaxError: invalid syntax"
         lines[40] = "HTTP 500 Internal Server Error"
         lines[50] = "command not found"
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=100)
-        
+
         # All error lines should be preserved
         assert "SyntaxError" in result.content
         assert "HTTP 500" in result.content
@@ -200,9 +199,9 @@ Line 51: Even more content"""
         """Verify truncation includes summary line."""
         lines = [f"Line {i}: test content" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=100)
-        
+
         # Summary line should be present
         assert "truncated" in result.content
         assert "lines" in result.content
@@ -211,9 +210,9 @@ Line 51: Even more content"""
         """Verify truncation_reason field is populated when truncated."""
         lines = [f"Line {i}: test content" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=100)
-        
+
         assert result.truncation_reason is not None
         assert "Original:" in result.truncation_reason
         assert "Truncated to:" in result.truncation_reason
@@ -223,9 +222,9 @@ Line 51: Even more content"""
         lines = [f"Line {i}: normal" for i in range(100)]
         lines[50] = "Error: test error"
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=50, preserve_errors=False)
-        
+
         # Error might or might not be in the result depending on truncation,
         # but no special preservation should occur
         assert result.was_truncated is True
@@ -238,16 +237,16 @@ class TestHeadOnlyTruncator:
         """Verify HeadOnlyTruncator keeps only the beginning."""
         lines = [f"Line {i}: test content" for i in range(100)]
         content = "\n".join(lines)
-        
+
         result = HeadOnlyTruncator.truncate(content, max_tokens=50)
-        
+
         # Should be truncated
         assert result.was_truncated is True
-        
+
         # First lines should be present
         assert "Line 0:" in result.content
         assert "Line 1:" in result.content
-        
+
         # Last lines should NOT be present
         assert "Line 99:" not in result.content
 
@@ -255,18 +254,18 @@ class TestHeadOnlyTruncator:
         """Verify HeadOnlyTruncator includes truncation summary."""
         lines = [f"Line {i}: test content" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = HeadOnlyTruncator.truncate(content, max_tokens=50)
-        
+
         # Summary should be at the end
         assert "truncated" in result.content
 
     def test_small_content_not_truncated(self):
         """Verify HeadOnlyTruncator doesn't truncate small content."""
         content = "Line 1\nLine 2\nLine 3"
-        
+
         result = HeadOnlyTruncator.truncate(content, max_tokens=1000)
-        
+
         assert result.was_truncated is False
         assert result.content == content
 
@@ -274,9 +273,9 @@ class TestHeadOnlyTruncator:
         """Verify HeadOnlyTruncator provides correct truncation reason."""
         lines = [f"Line {i}: test content" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = HeadOnlyTruncator.truncate(content, max_tokens=50)
-        
+
         assert result.truncation_reason is not None
         assert "first" in result.truncation_reason.lower()
 
@@ -288,16 +287,16 @@ class TestTailOnlyTruncator:
         """Verify TailOnlyTruncator keeps only the end."""
         lines = [f"Line {i}: test content" for i in range(100)]
         content = "\n".join(lines)
-        
+
         result = TailOnlyTruncator.truncate(content, max_tokens=50)
-        
+
         # Should be truncated
         assert result.was_truncated is True
-        
+
         # Last lines should be present
         assert "Line 99:" in result.content
         assert "Line 98:" in result.content
-        
+
         # First lines should NOT be present
         assert "Line 0:" not in result.content
         assert "Line 1:" not in result.content
@@ -306,18 +305,18 @@ class TestTailOnlyTruncator:
         """Verify TailOnlyTruncator includes truncation summary."""
         lines = [f"Line {i}: test content" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = TailOnlyTruncator.truncate(content, max_tokens=50)
-        
+
         # Summary should be at the beginning
         assert "truncated" in result.content
 
     def test_small_content_not_truncated(self):
         """Verify TailOnlyTruncator doesn't truncate small content."""
         content = "Line 1\nLine 2\nLine 3"
-        
+
         result = TailOnlyTruncator.truncate(content, max_tokens=1000)
-        
+
         assert result.was_truncated is False
         assert result.content == content
 
@@ -325,9 +324,9 @@ class TestTailOnlyTruncator:
         """Verify TailOnlyTruncator provides correct truncation reason."""
         lines = [f"Line {i}: test content" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = TailOnlyTruncator.truncate(content, max_tokens=50)
-        
+
         assert result.truncation_reason is not None
         assert "last" in result.truncation_reason.lower()
 
@@ -343,9 +342,9 @@ class TestMiddleOutTruncator:
         """Verify MiddleOutTruncator truncates large content."""
         lines = [f"Line {i}: test content" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = MiddleOutTruncator.truncate(content, max_tokens=50)
-        
+
         assert result.was_truncated is True
         assert result.final_lines < result.original_lines
 
@@ -357,23 +356,23 @@ class TestTruncateOutput:
         """Verify truncate_output returns a string."""
         content = "Test content"
         result = truncate_output(content, max_tokens=1000)
-        
+
         assert isinstance(result, str)
 
     def test_small_content_unchanged(self):
         """Verify small content is returned unchanged."""
         content = "Small content"
         result = truncate_output(content, max_tokens=1000)
-        
+
         assert result == content
 
     def test_large_content_truncated(self):
         """Verify large content is truncated."""
         lines = [f"Line {i}: test content here" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = truncate_output(content, max_tokens=50)
-        
+
         assert len(result) < len(content)
         assert "truncated" in result
 
@@ -395,11 +394,11 @@ class TestErrorPatternDetection:
             "ImportError: No module named",
             "RuntimeError: unexpected error",
         ]
-        
+
         for error_line in error_lines:
             content = f"Line 1\n{error_line}\nLine 3"
             result = OutputTruncator.truncate(content, max_tokens=1)
-            
+
             # If truncated, error should still be preserved
             if result.was_truncated:
                 assert error_line in result.content or result.truncation_reason
@@ -412,12 +411,12 @@ class TestErrorPatternDetection:
             "fatal error: header not found",
             "make:*** [target] Error 1",
         ]
-        
+
         for error_line in error_lines:
             lines = [f"Line {i}: normal" for i in range(50)]
             lines[25] = error_line
             content = "\n".join(lines)
-            
+
             result = OutputTruncator.truncate(content, max_tokens=20)
             assert error_line in result.content
 
@@ -429,12 +428,12 @@ class TestErrorPatternDetection:
             "Connection refused",
             "Timeout error",
         ]
-        
+
         for error_line in error_lines:
             lines = [f"Line {i}: normal" for i in range(50)]
             lines[25] = error_line
             content = "\n".join(lines)
-            
+
             result = OutputTruncator.truncate(content, max_tokens=20)
             assert error_line in result.content
 
@@ -446,12 +445,12 @@ class TestErrorPatternDetection:
             "Permission denied",
             "Operation not permitted",
         ]
-        
+
         for error_line in error_lines:
             lines = [f"Line {i}: normal" for i in range(50)]
             lines[25] = error_line
             content = "\n".join(lines)
-            
+
             result = OutputTruncator.truncate(content, max_tokens=20)
             assert error_line in result.content
 
@@ -463,12 +462,12 @@ class TestErrorPatternDetection:
             "Assertion failed",
             "expected 5 but got 3",
         ]
-        
+
         for error_line in error_lines:
             lines = [f"Line {i}: normal" for i in range(50)]
             lines[25] = error_line
             content = "\n".join(lines)
-            
+
             result = OutputTruncator.truncate(content, max_tokens=20)
             assert error_line in result.content
 
@@ -479,9 +478,9 @@ class TestLinesFittingChars:
     def test_from_start(self):
         """Verify taking lines from start works correctly."""
         lines = ["a" * 10 for _ in range(10)]  # 10 chars each + newline
-        
+
         result = OutputTruncator._lines_fitting_chars(lines, 50, from_end=False)
-        
+
         # Should fit ~4 lines (10 chars + 1 newline = 11 chars each)
         assert len(result) <= 5
         assert result[0] == lines[0]
@@ -489,9 +488,9 @@ class TestLinesFittingChars:
     def test_from_end(self):
         """Verify taking lines from end works correctly."""
         lines = [f"line {i}" for i in range(10)]
-        
+
         result = OutputTruncator._lines_fitting_chars(lines, 50, from_end=True)
-        
+
         # Should take from the end
         assert len(result) <= 10
         if result:
@@ -516,7 +515,7 @@ class TestCreateSummary:
     def test_summary_format(self):
         """Verify summary message format."""
         summary = OutputTruncator._create_summary(42)
-        
+
         assert "42" in summary
         assert "lines" in summary
         assert "truncated" in summary
@@ -539,10 +538,10 @@ class TestDefaultMaxTokens:
         """Verify default is used when max_tokens not specified."""
         lines = [f"Line {i}: {'x' * 100}" for i in range(200)]
         content = "\n".join(lines)
-        
+
         # This should not truncate with default 4000 tokens
         result = OutputTruncator.truncate(content)
-        
+
         # May or may not truncate depending on content size
         # Just verify it doesn't crash
         assert isinstance(result, TruncationResult)
@@ -571,9 +570,9 @@ Results: 2 passed, 1 failed
         lines = content.split("\n")
         lines.extend([f"Filler line {i}" for i in range(500)])
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=200)
-        
+
         # Should preserve the error traceback
         assert "Traceback (most recent call last):" in result.content
         assert "AssertionError" in result.content
@@ -597,9 +596,9 @@ Done
         lines = content.split("\n")
         lines[4:4] = [f"Filler line {i}" for i in range(200)]
         content = "\n".join(lines)
-        
+
         result = OutputTruncator.truncate(content, max_tokens=100)
-        
+
         # Should preserve traceback
         assert "Traceback (most recent call last):" in result.content
         assert "ValueError: Invalid item" in result.content

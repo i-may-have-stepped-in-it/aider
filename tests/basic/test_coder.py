@@ -1347,7 +1347,7 @@ This command will print 'Hello, World!' to the console."""
             coder.done_messages = []
 
             # Mock the critique_plan to avoid reviewer calls
-            with patch.object(coder, 'critique_plan', return_value="PASSED"):
+            with patch.object(coder, "critique_plan", return_value="PASSED"):
                 # Mock editor_coder creation and execution
                 mock_editor = MagicMock()
                 with patch("aider.coders.architect_coder.Coder.create", return_value=mock_editor):
@@ -1383,7 +1383,7 @@ This command will print 'Hello, World!' to the console."""
             coder.done_messages = []
 
             # Mock the critique_plan to avoid reviewer calls
-            with patch.object(coder, 'critique_plan', return_value="PASSED"):
+            with patch.object(coder, "critique_plan", return_value="PASSED"):
                 # Mock editor_coder creation and execution
                 mock_editor = MagicMock()
                 with patch("aider.coders.architect_coder.Coder.create", return_value=mock_editor):
@@ -1417,7 +1417,7 @@ This command will print 'Hello, World!' to the console."""
             coder.done_messages = []
 
             # Mock the critique_plan to avoid reviewer calls
-            with patch.object(coder, 'critique_plan', return_value="PASSED"):
+            with patch.object(coder, "critique_plan", return_value="PASSED"):
                 # Mock editor_coder creation and execution
                 mock_editor = MagicMock()
                 with patch("aider.coders.architect_coder.Coder.create", return_value=mock_editor):

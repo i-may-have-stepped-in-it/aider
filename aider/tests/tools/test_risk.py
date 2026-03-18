@@ -4,18 +4,17 @@ This module tests the risk classification functionality which assigns risk level
 to tools based on their potential impact on the system.
 """
 
-import pytest
 from aider.tools.risk import (
+    GIT_SUBCOMMAND_RISK,
+    TOOL_RISK_LEVELS,
     RiskLevel,
+    _check_dangerous_shell_patterns,
+    _extract_git_subcommand,
+    _is_force_git_command,
+    _is_hard_reset,
     get_tool_risk,
     is_tool_safe,
     requires_confirmation,
-    TOOL_RISK_LEVELS,
-    GIT_SUBCOMMAND_RISK,
-    _extract_git_subcommand,
-    _check_dangerous_shell_patterns,
-    _is_force_git_command,
-    _is_hard_reset,
 )
 
 
@@ -24,7 +23,7 @@ class TestRiskLevelEnum:
 
     def test_risk_level_values(self):
         """Verify RiskLevel enum has expected values.
-        
+
         Risk levels should be ordered from least to most dangerous.
         """
         assert RiskLevel.SAFE.value >= 1
@@ -34,7 +33,7 @@ class TestRiskLevelEnum:
 
     def test_risk_level_ordering(self):
         """Verify RiskLevel values follow expected ordering.
-        
+
         SAFE < NORMAL < RISKY < DANGEROUS
         """
         assert RiskLevel.SAFE.value < RiskLevel.NORMAL.value
@@ -54,7 +53,7 @@ class TestToolRiskMapping:
 
     def test_safe_tools_mapping(self):
         """Verify SAFE tools are correctly mapped.
-        
+
         Read-only operations should be SAFE.
         """
         # Tool names use snake_case in the mapping
@@ -68,7 +67,7 @@ class TestToolRiskMapping:
 
     def test_normal_tools_mapping(self):
         """Verify NORMAL tools are correctly mapped.
-        
+
         Write operations should be NORMAL.
         """
         assert TOOL_RISK_LEVELS["write_file"] == RiskLevel.NORMAL
@@ -76,7 +75,7 @@ class TestToolRiskMapping:
 
     def test_dangerous_tools_mapping(self):
         """Verify DANGEROUS tools are correctly mapped.
-        
+
         Shell has unrestricted power, so base level is DANGEROUS.
         """
         assert TOOL_RISK_LEVELS["run"] == RiskLevel.DANGEROUS
@@ -118,7 +117,7 @@ class TestGetToolRiskSafeTools:
 
     def test_ask_user_question_is_safe(self):
         """Verify AskUserQuestion is classified as SAFE.
-        
+
         User controls the interaction, so it's safe.
         """
         risk = get_tool_risk("AskUserQuestion", {"question": "Continue?"})
@@ -155,7 +154,7 @@ class TestGetToolRiskGitCommands:
 
     def test_git_push_is_risky(self):
         """Verify 'git push' is classified as RISKY or DANGEROUS.
-        
+
         Push can overwrite remote changes. May be RISKY or DANGEROUS depending
         on pattern detection for force flags.
         """
@@ -165,7 +164,7 @@ class TestGetToolRiskGitCommands:
 
     def test_git_push_force_is_dangerous(self):
         """Verify 'git push --force' is classified as DANGEROUS.
-        
+
         Force push can rewrite history and lose commits.
         """
         risk = get_tool_risk("Shell", {"command": "git push --force origin main"})
@@ -178,7 +177,7 @@ class TestGetToolRiskGitCommands:
 
     def test_git_reset_is_dangerous(self):
         """Verify 'git reset --hard' is classified as DANGEROUS.
-        
+
         Hard reset can lose uncommitted changes.
         """
         risk = get_tool_risk("Shell", {"command": "git reset --hard HEAD~1"})
@@ -186,7 +185,7 @@ class TestGetToolRiskGitCommands:
 
     def test_git_reset_is_dangerous_even_with_soft(self):
         """Verify 'git reset' is classified as DANGEROUS.
-        
+
         Reset is mapped to DANGEROUS regardless of flags for safety.
         """
         risk = get_tool_risk("Shell", {"command": "git reset --soft HEAD~1"})
@@ -195,7 +194,7 @@ class TestGetToolRiskGitCommands:
 
     def test_git_rebase_is_risky(self):
         """Verify 'git rebase' is classified as RISKY.
-        
+
         Rebase rewrites history.
         """
         risk = get_tool_risk("Shell", {"command": "git rebase main"})
@@ -227,7 +226,7 @@ class TestGetToolRiskShellCommands:
 
     def test_safe_shell_commands(self):
         """Verify safe shell commands are classified as NORMAL.
-        
+
         Commands like ls, cat, head, tail are generally safe.
         Note: Some commands may trigger RISKY due to force flag detection.
         """
@@ -241,10 +240,13 @@ class TestGetToolRiskShellCommands:
             "date",
             "whoami",
         ]
-        
+
         for cmd in safe_commands:
             risk = get_tool_risk("Shell", {"command": cmd})
-            assert risk in (RiskLevel.NORMAL, RiskLevel.SAFE), f"Command '{cmd}' should be NORMAL or SAFE"
+            assert risk in (
+                RiskLevel.NORMAL,
+                RiskLevel.SAFE,
+            ), f"Command '{cmd}' should be NORMAL or SAFE"
 
     def test_rm_rf_is_dangerous(self):
         """Verify 'rm -rf' is classified as DANGEROUS."""
@@ -328,7 +330,7 @@ class TestGitSubcommandDetection:
 
     def test_extract_with_leading_options(self):
         """Verify subcommand extraction with leading options.
-        
+
         Note: The implementation may include option arguments as subcommand.
         """
         result = _extract_git_subcommand({"command": "git -C /repo status"})
@@ -372,7 +374,7 @@ class TestDangerousShellPatterns:
             "parted /dev/sda",
             "shred -u file",
         ]
-        
+
         for cmd in dangerous_commands:
             risk = _check_dangerous_shell_patterns(cmd)
             assert risk == RiskLevel.DANGEROUS, f"Command '{cmd}' should be DANGEROUS"
@@ -500,7 +502,10 @@ class TestSafetyHelperFunctions:
     def test_requires_confirmation_returns_false_for_normal(self):
         """Verify requires_confirmation returns False for NORMAL tools."""
         # WriteFile is NORMAL
-        assert requires_confirmation("WriteFile", {"path": "/tmp/test.txt", "content": "test"}) is False
+        assert (
+            requires_confirmation("WriteFile", {"path": "/tmp/test.txt", "content": "test"})
+            is False
+        )
 
 
 class TestGitSubcommandRiskMapping:

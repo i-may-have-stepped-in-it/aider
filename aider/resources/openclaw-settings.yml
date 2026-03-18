@@ -1,0 +1,70 @@
+# OpenClaw Gateway Configuration for Aider
+# 
+# This file shows how to configure Aider to use OpenClaw Gateway
+# with both OpenResponses API and OpenAI-compatible HTTP API.
+#
+# Place this in your Aider config directory or reference it from
+# your main model settings file.
+
+# Environment variables you can set:
+# - AIDER_OPENCLAW_MODE: responses|http|auto|disabled (default: auto)
+# - AIDER_OPENCLAW_AGENT_ID: Agent ID to use (default: chat)
+# - AIDER_OPENCLAW_SESSION_KEY: Session key for continuity (optional)
+# - AIDER_OPENCLAW_TIMEOUT: Request timeout in seconds (default: 300)
+
+# Example model settings for OpenClaw
+
+# Use OpenClaw Gateway via HTTP API with explicit agent selection
+- name: openclaw-chat
+  extra_params:
+    api_base: http://127.0.0.1:18789/v1
+    extra_headers:
+      X-OpenClaw-Agent-Id: chat
+  streaming: true
+
+# Use OpenClaw with specific tier routing
+- name: openclaw-speed
+  extra_params:
+    api_base: http://127.0.0.1:18789/v1
+    extra_headers:
+      X-OpenClaw-Agent-Id: chat
+  # The prompt should include @highspeed for tier routing
+  system_prompt_prefix: "@highspeed "
+
+- name: openclaw-intel
+  extra_params:
+    api_base: http://127.0.0.1:18789/v1
+    extra_headers:
+      X-OpenClaw-Agent-Id: chat
+  system_prompt_prefix: "@intelligence "
+
+- name: openclaw-uncen
+  extra_params:
+    api_base: http://127.0.0.1:18789/v1
+    extra_headers:
+      X-OpenClaw-Agent-Id: chat
+  system_prompt_prefix: "@uncensored "
+
+# Alternative: Use model name to specify agent
+- name: openclaw:chat
+  extra_params:
+    api_base: http://127.0.0.1:18789/v1
+  streaming: true
+
+- name: openclaw:kimi
+  extra_params:
+    api_base: http://127.0.0.1:18789/v1
+  streaming: true
+
+- name: openclaw:claude
+  extra_params:
+    api_base: http://127.0.0.1:18789/v1
+  streaming: true
+
+# For direct OpenResponses API (not OpenAI-compatible)
+- name: openclaw-responses
+  extra_params:
+    api_base: http://127.0.0.1:18789
+    # Use custom OpenClawModel class
+  use_openclaw: true
+  streaming: true

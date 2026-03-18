@@ -1,7 +1,9 @@
 from .base_prompts import CoderPrompts
 
+
 class ReviewerPrompts(CoderPrompts):
-    main_system = """Act as a Senior Lead Reviewer. Your goal is to find flaws in the proposed architectural plan.
+    main_system = """Act as a Senior Lead Reviewer. Your goal is to find flaws in the proposed
+architectural plan.
 Study the User's Request and the Architect's Plan carefully.
 
 ## Your Responsibilities:

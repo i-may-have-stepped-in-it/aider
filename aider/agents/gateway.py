@@ -8,7 +8,6 @@ the OpenClaw gateway instead of direct provider APIs.
 import os
 from typing import Optional
 
-
 # Default OpenClaw gateway endpoint
 DEFAULT_GATEWAY_URL = "http://127.0.0.1:18789/v1"
 
@@ -16,21 +15,21 @@ DEFAULT_GATEWAY_URL = "http://127.0.0.1:18789/v1"
 def configure_gateway(url: Optional[str] = None) -> str:
     """
     Configure environment to use OpenClaw gateway.
-    
+
     Args:
         url: Gateway URL (defaults to http://127.0.0.1:18789/v1)
-        
+
     Returns:
         The configured gateway URL
     """
     gateway_url = url or os.environ.get("OPENCLAW_GATEWAY_URL", DEFAULT_GATEWAY_URL)
-    
+
     # Set OpenAI-compatible API base
     os.environ["OPENAI_API_BASE"] = gateway_url
-    
+
     # Ensure we don't use direct API keys - gateway handles auth
     # Keep any existing keys for non-gateway usage
-    
+
     return gateway_url
 
 
@@ -44,13 +43,10 @@ def get_gateway_url() -> Optional[str]:
     return os.environ.get("OPENAI_API_BASE")
 
 
-def create_gateway_model_name(
-    tier: Optional[str] = None,
-    model: Optional[str] = None
-) -> str:
+def create_gateway_model_name(tier: Optional[str] = None, model: Optional[str] = None) -> str:
     """
     Create a model name for the gateway.
-    
+
     The gateway accepts:
     - "chat" - Use default chat model
     - "@intel", "@speed", "@uncen" - Tier pool prefixes
@@ -59,22 +55,22 @@ def create_gateway_model_name(
     Args:
         tier: Tier prefix (@intel, @speed, @uncen)
         model: Specific model name
-        
+
     Returns:
         Model name for gateway
     """
     if tier:
         return tier if tier.startswith("@") else f"@{tier}"
-    
+
     if model:
         return model
-    
+
     return "chat"
 
 
 class GatewayConfig:
     """Configuration for OpenClaw gateway."""
-    
+
     def __init__(
         self,
         url: str = DEFAULT_GATEWAY_URL,
@@ -84,11 +80,11 @@ class GatewayConfig:
         self.url = url
         self.timeout = timeout
         self.retries = retries
-    
+
     def apply(self):
         """Apply configuration to environment."""
         configure_gateway(self.url)
-    
+
     @classmethod
     def from_env(cls) -> "GatewayConfig":
         """Create config from environment variables."""

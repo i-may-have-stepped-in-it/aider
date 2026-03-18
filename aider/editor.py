@@ -10,6 +10,7 @@ This module provides functionality to:
 
 import os
 import platform
+import shlex
 import subprocess
 import tempfile
 
@@ -128,10 +129,14 @@ def pipe_editor(input_data="", suffix=None, editor=None):
     :rtype: str
     """
     filepath = write_temp_file(input_data, suffix)
-    command_str = discover_editor(editor)
-    command_str += " " + filepath
+    editor_cmd = discover_editor(editor)
 
-    subprocess.call(command_str, shell=True)
+    # SECURITY: Parse editor command with shlex to avoid shell injection
+    # This handles cases like: vim -c "set noswapfile"
+    cmd_parts = shlex.split(editor_cmd)
+    cmd_parts.append(filepath)
+
+    subprocess.call(cmd_parts, shell=False)
     with open(filepath, "r") as f:
         output_data = f.read()
     try:

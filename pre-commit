@@ -1,0 +1,392 @@
+isort....................................................................[42mPassed[m
+black....................................................................[42mPassed[m
+flake8...................................................................[41mFailed[m
+[2m- hook id: flake8[m
+[2m- exit code: 1[m
+
+[1maider/tests/tools_v2/test_integration.py[m[36m:[m4[36m:[m68[36m:[m [1m[31mW291[m trailing whitespace
+"""Integration tests for tools_v2 system.
+
+This module provides comprehensive integration tests for the complete tools_v2
+system including AsyncExecutor, Sandbox, ToolRouterV2, CostTracker, 
+CircuitBreaker, and ToolEnabledCoderV2.
+
+Test coverage includes:
+- Normal execution flow
+- Timeout handling with partial results
+- Budget exceeded handling
+- Circuit breaker opens after failures
+- Concurrent execution safety
+- Resource cleanup on exceptions
+- Nested event loop detection
+
+Usage:
+    pytest tests/tools_v2/test_integration.py -v
+    pytest tests/tools_v2/test_integration.py::TestAsyncExecutor -v
+    pytest tests/tools_v2/test_integration.py -k "timeout" -v
+"""
+                                         
+
+                        ^
+[1mexamples/multi_agent_example.py[m[36m:[m14[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.agents.agent import AgentResult, AgentStatus, SubAgent
+^
+[1mexamples/multi_agent_example.py[m[36m:[m15[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.agents.registry import AgentRegistry
+^
+[1mexamples/multi_agent_example.py[m[36m:[m206[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"Models used: Kimi K2.5, Claude 3.5 Sonnet, GPT-4o-mini")
+          ^
+[1mexamples/skills_example.py[m[36m:[m14[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.skills.base import SkillContext
+^
+[1mexamples/skills_example.py[m[36m:[m15[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.skills.registry import create_skill, get_registry
+^
+[1mexamples/skills_example.py[m[36m:[m39[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+        print(f"\nResult:")
+              ^
+[1mexamples/skills_example.py[m[36m:[m102[36m:[m15[36m:[m [1m[31mF541[m f-string is missing placeholders
+        print(f"\nResult:")
+              ^
+[1mexamples/skills_example.py[m[36m:[m168[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"Map prompt template: Analyze {{item}} for complexity")
+          ^
+[1mexamples/skills_example.py[m[36m:[m169[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"Reduce prompt: Summarize findings")
+          ^
+[1mexamples/skills_example.py[m[36m:[m179[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"Result:")
+          ^
+[1mskills/advanced_code_review.py[m[36m:[m12[36m:[m1[36m:[m [1m[31mF401[m 'asyncio' imported but unused
+import asyncio
+^
+[1mskills/advanced_code_review.py[m[36m:[m14[36m:[m1[36m:[m [1m[31mF401[m 'dataclasses.field' imported but unused
+from dataclasses import dataclass, field
+^
+[1mskills/advanced_code_review.py[m[36m:[m16[36m:[m1[36m:[m [1m[31mF401[m 'pathlib.Path' imported but unused
+from pathlib import Path
+^
+[1mskills/advanced_code_review.py[m[36m:[m17[36m:[m1[36m:[m [1m[31mF401[m 'typing.Tuple' imported but unused
+from typing import Any, Dict, List, Optional, Tuple
+^
+[1mskills/human_approval.py[m[36m:[m15[36m:[m1[36m:[m [1m[31mF401[m 'pathlib.Path' imported but unused
+from pathlib import Path
+^
+[1mskills/human_approval.py[m[36m:[m89[36m:[m13[36m:[m [1m[31mF821[m undefined name 'logger'
+            logger.info(f"Auto-approved {operation}: {description}")
+            ^
+[1mskills/human_approval.py[m[36m:[m93[36m:[m13[36m:[m [1m[31mF821[m undefined name 'logger'
+            logger.info(f"Created approval request: {request_id} for {operation}")
+            ^
+[1mskills/human_approval.py[m[36m:[m117[36m:[m9[36m:[m [1m[31mF821[m undefined name 'logger'
+        logger.info(f"Approved {request.operation} by {request.approved_by}")
+        ^
+[1mskills/human_approval.py[m[36m:[m130[36m:[m13[36m:[m [1m[31mF821[m undefined name 'logger'
+            logger.info(f"Rejected {request.operation}: {reason}")
+            ^
+[1mskills/human_approval.py[m[36m:[m132[36m:[m13[36m:[m [1m[31mF821[m undefined name 'logger'
+            logger.info(f"Rejected {request.operation}")
+            ^
+[1mskills/human_approval.py[m[36m:[m170[36m:[m9[36m:[m [1m[31mF821[m undefined name 'logger'
+        logger.info(f"Rolling back {request.operation}")
+        ^
+[1mskills/long_term_memory.py[m[36m:[m11[36m:[m1[36m:[m [1m[31mF401[m 'asyncio' imported but unused
+import asyncio
+^
+[1mskills/long_term_memory.py[m[36m:[m15[36m:[m1[36m:[m [1m[31mF401[m 'pathlib.Path' imported but unused
+from pathlib import Path
+^
+[1mskills/long_term_memory.py[m[36m:[m16[36m:[m1[36m:[m [1m[31mF401[m 'typing.Set' imported but unused
+from typing import Any, Dict, List, Optional, Set
+^
+[1mskills/model_router.py[m[36m:[m11[36m:[m1[36m:[m [1m[31mF401[m 'asyncio' imported but unused
+import asyncio
+^
+[1mskills/model_router.py[m[36m:[m13[36m:[m1[36m:[m [1m[31mF401[m 'dataclasses.field' imported but unused
+from dataclasses import dataclass, field
+^
+[1mtest_agents.py[m[36m:[m11[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.agents.agent import AgentResult, AgentStatus, SubAgent
+^
+[1mtest_agents.py[m[36m:[m12[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.agents.registry import AgentRegistry
+^
+[1mtest_agents.py[m[36m:[m43[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"  ✓ Registered 2 agents")
+          ^
+[1mtest_agents.py[m[36m:[m48[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"  ✓ Get agent by ID works")
+          ^
+[1mtest_agents.py[m[36m:[m53[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"  ✓ List agents works")
+          ^
+[1mtest_agents.py[m[36m:[m64[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"  ✓ Update status works")
+          ^
+[1mtest_agents.py[m[36m:[m70[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"  ✓ List active agents works")
+          ^
+[1mtest_agents.py[m[36m:[m77[36m:[m11[36m:[m [1m[31mF541[m f-string is missing placeholders
+    print(f"  ✓ Statistics works")
+          ^
+[1mtest_agents.py[m[36m:[m96[36m:[m31[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert args.enable_agents == True
+                              ^
+[1mtest_integration.py[m[36m:[m18[36m:[m5[36m:[m [1m[31mF401[m 'aider.coders' imported but unused
+    from aider import coders
+    ^
+[1mtest_integration.py[m[36m:[m19[36m:[m5[36m:[m [1m[31mF401[m 'aider.coders.Coder' imported but unused
+    from aider.coders import Coder
+    ^
+[1mtest_integration.py[m[36m:[m20[36m:[m5[36m:[m [1m[31mF401[m 'aider.commands.Commands' imported but unused
+    from aider.commands import Commands
+    ^
+[1mtest_integration.py[m[36m:[m25[36m:[m5[36m:[m [1m[31mF401[m 'aider.hooks.HooksManager' imported but unused
+    from aider.hooks import HooksManager, create_hooks_manager, get_hooks_manager
+    ^
+[1mtest_integration.py[m[36m:[m25[36m:[m5[36m:[m [1m[31mF401[m 'aider.hooks.create_hooks_manager' imported but unused
+    from aider.hooks import HooksManager, create_hooks_manager, get_hooks_manager
+    ^
+[1mtest_integration.py[m[36m:[m25[36m:[m5[36m:[m [1m[31mF401[m 'aider.hooks.get_hooks_manager' imported but unused
+    from aider.hooks import HooksManager, create_hooks_manager, get_hooks_manager
+    ^
+[1mtest_integration.py[m[36m:[m30[36m:[m5[36m:[m [1m[31mF401[m 'aider.agents.AgentExecutor' imported but unused
+    from aider.agents import AgentExecutor, AgentRegistry, AgentStatus, SubAgent
+    ^
+[1mtest_integration.py[m[36m:[m30[36m:[m5[36m:[m [1m[31mF401[m 'aider.agents.AgentRegistry' imported but unused
+    from aider.agents import AgentExecutor, AgentRegistry, AgentStatus, SubAgent
+    ^
+[1mtest_integration.py[m[36m:[m30[36m:[m5[36m:[m [1m[31mF401[m 'aider.agents.AgentStatus' imported but unused
+    from aider.agents import AgentExecutor, AgentRegistry, AgentStatus, SubAgent
+    ^
+[1mtest_integration.py[m[36m:[m30[36m:[m5[36m:[m [1m[31mF401[m 'aider.agents.SubAgent' imported but unused
+    from aider.agents import AgentExecutor, AgentRegistry, AgentStatus, SubAgent
+    ^
+[1mtest_integration.py[m[36m:[m31[36m:[m5[36m:[m [1m[31mF401[m 'aider.agents.gateway.configure_gateway' imported but unused
+    from aider.agents.gateway import configure_gateway, create_gateway_model_name
+    ^
+[1mtest_integration.py[m[36m:[m31[36m:[m5[36m:[m [1m[31mF401[m 'aider.agents.gateway.create_gateway_model_name' imported but unused
+    from aider.agents.gateway import configure_gateway, create_gateway_model_name
+    ^
+[1mtest_integration.py[m[36m:[m36[36m:[m5[36m:[m [1m[31mF401[m 'aider.skills.SkillContext' imported but unused
+    from aider.skills import (
+    ^
+[1mtest_integration.py[m[36m:[m36[36m:[m5[36m:[m [1m[31mF401[m 'aider.skills.SkillResult' imported but unused
+    from aider.skills import (
+    ^
+[1mtest_integration.py[m[36m:[m36[36m:[m5[36m:[m [1m[31mF401[m 'aider.skills.create_skill' imported but unused
+    from aider.skills import (
+    ^
+[1mtest_integration.py[m[36m:[m36[36m:[m5[36m:[m [1m[31mF401[m 'aider.skills.get_registry' imported but unused
+    from aider.skills import (
+    ^
+[1mtest_integration.py[m[36m:[m36[36m:[m5[36m:[m [1m[31mF401[m 'aider.skills.list_all_skills' imported but unused
+    from aider.skills import (
+    ^
+[1mtest_integration.py[m[36m:[m151[36m:[m5[36m:[m [1m[31mF401[m 'aider.coders.base_coder.Coder' imported but unused
+    from aider.coders.base_coder import Coder
+    ^
+[1mtest_skills.py[m[36m:[m11[36m:[m1[36m:[m [1m[31mF401[m 'aider.skills.base.SkillResult' imported but unused
+from aider.skills.base import SkillContext, SkillResult
+^
+[1mtest_skills.py[m[36m:[m11[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.skills.base import SkillContext, SkillResult
+^
+[1mtest_skills.py[m[36m:[m12[36m:[m1[36m:[m [1m[31mF401[m 'aider.skills.code_review.SecurityAuditSkill' imported but unused
+from aider.skills.code_review import CodeReviewSkill, SecurityAuditSkill
+^
+[1mtest_skills.py[m[36m:[m12[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.skills.code_review import CodeReviewSkill, SecurityAuditSkill
+^
+[1mtest_skills.py[m[36m:[m13[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.skills.documentation import DocumentationSkill
+^
+[1mtest_skills.py[m[36m:[m14[36m:[m1[36m:[m [1m[31mF401[m 'aider.skills.registry.create_skill' imported but unused
+from aider.skills.registry import create_skill, get_registry
+^
+[1mtest_skills.py[m[36m:[m14[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.skills.registry import create_skill, get_registry
+^
+[1mtest_skills.py[m[36m:[m15[36m:[m1[36m:[m [1m[31mE402[m module level import not at top of file
+from aider.skills.test_generation import TestGenerationSkill
+^
+[1mtests/agentic/test_filesystem.py[m[36m:[m1[36m:[m1[36m:[m [1m[31mF401[m 'os' imported but unused
+import os
+^
+[1mtests/agentic/test_infrastructure.py[m[36m:[m2[36m:[m1[36m:[m [1m[31mF401[m 'pathlib.Path' imported but unused
+from pathlib import Path
+^
+[1mtests/agentic/test_infrastructure.py[m[36m:[m4[36m:[m1[36m:[m [1m[31mF401[m 'aider.agents.governor.get_governor' imported but unused
+from aider.agents.governor import MissionGovernor, get_governor
+^
+[1mtests/help/test_help.py[m[36m:[m9[36m:[m1[36m:[m [1m[31mF401[m 'aider.commands.SwitchCoder' imported but unused
+from aider.commands import Commands, SwitchCoder
+^
+[1mtests/test_architect_coder.py[m[36m:[m8[36m:[m1[36m:[m [1m[31mF401[m 'unittest.mock.AsyncMock' imported but unused
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+^
+[1mtests/test_architect_coder.py[m[36m:[m8[36m:[m1[36m:[m [1m[31mF401[m 'unittest.mock.MagicMock' imported but unused
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+^
+[1mtests/test_architect_coder.py[m[36m:[m48[36m:[m48[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+                assert architect.research_done == True
+                                               ^
+[1mtests/test_architect_coder.py[m[36m:[m113[36m:[m9[36m:[m [1m[31mF401[m 'aider.a2a.types.A2AMessageType' imported but unused
+        from aider.a2a.types import A2AMessageType, A2AResponse
+        ^
+[1mtests/test_architect_coder.py[m[36m:[m113[36m:[m9[36m:[m [1m[31mF401[m 'aider.a2a.types.A2AResponse' imported but unused
+        from aider.a2a.types import A2AMessageType, A2AResponse
+        ^
+[1mtests/test_edge_cases.py[m[36m:[m11[36m:[m1[36m:[m [1m[31mF401[m 'pytest' imported but unused
+import pytest
+^
+[1mtests/test_edge_cases.py[m[36m:[m42[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m49[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m57[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True  # Empty string is valid
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m64[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m72[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m79[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m86[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m98[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m166[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m175[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_edge_cases.py[m[36m:[m187[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True  # Should complete within 1 second
+                          ^
+[1mtests/test_failure_modes.py[m[36m:[m11[36m:[m1[36m:[m [1m[31mF401[m 'pytest' imported but unused
+import pytest
+^
+[1mtests/test_failure_modes.py[m[36m:[m59[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_failure_modes.py[m[36m:[m74[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_failure_modes.py[m[36m:[m89[36m:[m29[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert cb.can_execute() == False
+                            ^
+[1mtests/test_failure_modes.py[m[36m:[m109[36m:[m29[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert cb.can_execute() == True
+                            ^
+[1mtests/test_failure_modes.py[m[36m:[m137[36m:[m29[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert cb.can_execute() == False
+                            ^
+[1mtests/test_failure_modes.py[m[36m:[m153[36m:[m20[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result1 == True
+                   ^
+[1mtests/test_failure_modes.py[m[36m:[m157[36m:[m20[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result2 == True
+                   ^
+[1mtests/test_failure_modes.py[m[36m:[m173[36m:[m19[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result == False
+                  ^
+[1mtests/test_failure_modes.py[m[36m:[m194[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_failure_modes.py[m[36m:[m199[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_failure_modes.py[m[36m:[m234[36m:[m5[36m:[m [1m[31mF401[m 'threading' imported but unused
+    import threading
+    ^
+[1mtests/test_failure_modes.py[m[36m:[m278[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_failure_modes.py[m[36m:[m310[36m:[m31[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert results[0].success == False
+                              ^
+[1mtests/test_security.py[m[36m:[m9[36m:[m1[36m:[m [1m[31mF401[m 'threading' imported but unused
+import threading
+^
+[1mtests/test_security.py[m[36m:[m12[36m:[m1[36m:[m [1m[31mF401[m 'pytest' imported but unused
+import pytest
+^
+[1mtests/test_security.py[m[36m:[m15[36m:[m1[36m:[m [1m[31mF401[m 'aider.skills.registry.register_skill' imported but unused
+from aider.skills.registry import SkillRegistry, register_skill
+^
+[1mtests/test_security.py[m[36m:[m54[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m63[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m72[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m81[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m90[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m99[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m108[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m117[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m126[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_security.py[m[36m:[m134[36m:[m27[36m:[m [1m[31mE712[m comparison to True should be 'if cond is True:' or 'if cond:'
+    assert result.success == True
+                          ^
+[1mtests/test_security.py[m[36m:[m208[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/test_security.py[m[36m:[m254[36m:[m27[36m:[m [1m[31mE712[m comparison to False should be 'if cond is False:' or 'if not cond:'
+    assert result.success == False
+                          ^
+[1mtests/tools/test_integration.py[m[36m:[m15[36m:[m1[36m:[m [1m[31mF401[m 'io.StringIO' imported but unused
+from io import StringIO
+^
+[1mtests/tools/test_integration.py[m[36m:[m26[36m:[m1[36m:[m [1m[31mF401[m 'aider.tools.cost.ToolCallCost' imported but unused
+from aider.tools.cost import CostTracker, ToolCallCost
+^
+[1mtests/tools/test_integration.py[m[36m:[m27[36m:[m1[36m:[m [1m[31mF401[m 'aider.tools.risk.get_tool_risk' imported but unused
+from aider.tools.risk import RiskLevel, get_tool_risk
+^
+[1mtests/tools/test_integration.py[m[36m:[m292[36m:[m9[36m:[m [1m[31mF401[m 'sys' imported but unused
+        import sys
+        ^
+[1mtests/tools/test_integration.py[m[36m:[m293[36m:[m9[36m:[m [1m[31mF401[m 'io.StringIO' imported but unused
+        from io import StringIO
+        ^
+[1mtests/tools/test_integration.py[m[36m:[m293[36m:[m9[36m:[m [1m[31mF811[m redefinition of unused 'StringIO' from line 15
+        from io import StringIO
+        ^
+[1mtests/tools/test_integration.py[m[36m:[m747[36m:[m9[36m:[m [1m[31mF811[m redefinition of unused 'get_tool_risk' from line 27
+        from aider.tools.risk import get_tool_risk
+        ^
+[1mtests/tools/test_sandbox.py[m[36m:[m10[36m:[m1[36m:[m [1m[31mF401[m 'tempfile' imported but unused
+import tempfile
+^
+[1mtests/tools/test_sandbox.py[m[36m:[m11[36m:[m1[36m:[m [1m[31mF401[m 'pathlib.Path' imported but unused
+from pathlib import Path
+^
+
+codespell................................................................[42mPassed[m

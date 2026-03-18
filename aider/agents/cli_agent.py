@@ -28,25 +28,24 @@ import threading
 import uuid
 from typing import Optional
 
-
 # CLI invocation specs for simple headless/print modes
 _CLI_SPECS: dict[str, dict] = {
     "gemini": {
         "binary": "gemini",
         "args_before": [],
-        "prompt_flag": "-p",    # gemini -p "prompt" --yolo
+        "prompt_flag": "-p",  # gemini -p "prompt" --yolo
         "args_after": ["--yolo"],
     },
     "claude": {
         "binary": "claude",
         "args_before": [],
-        "prompt_flag": "-p",    # claude -p "prompt"
+        "prompt_flag": "-p",  # claude -p "prompt"
         "args_after": [],
     },
     "codex": {
         "binary": "codex",
         "args_before": ["exec"],  # codex exec "prompt"
-        "prompt_flag": None,       # positional
+        "prompt_flag": None,  # positional
         "args_after": [],
     },
     # kimi uses Wire protocol — see KimiWireClient below
@@ -124,7 +123,6 @@ class KimiWireClient:
             raise CliAgentError("kimi binary not found.")
 
         text_parts: list[str] = []
-        error: list[str] = []
         done = threading.Event()
 
         def _read_responses():
@@ -163,40 +161,49 @@ class KimiWireClient:
                         if rtype == "ApprovalRequest":
                             # Auto-approve (--yolo should handle this, but be safe)
                             approval_id = rparams.get("payload", {}).get("id", "")
-                            _send(proc, {
-                                "jsonrpc": "2.0",
-                                "id": req_id,
-                                "result": {
-                                    "request_id": approval_id,
-                                    "response": "approve_for_session",
+                            _send(
+                                proc,
+                                {
+                                    "jsonrpc": "2.0",
+                                    "id": req_id,
+                                    "result": {
+                                        "request_id": approval_id,
+                                        "response": "approve_for_session",
+                                    },
                                 },
-                            })
+                            )
 
                         elif rtype == "QuestionRequest":
                             # Answer with empty (skip questions)
                             q_id = rparams.get("payload", {}).get("id", "")
-                            _send(proc, {
-                                "jsonrpc": "2.0",
-                                "id": req_id,
-                                "result": {"request_id": q_id, "answers": {}},
-                            })
+                            _send(
+                                proc,
+                                {
+                                    "jsonrpc": "2.0",
+                                    "id": req_id,
+                                    "result": {"request_id": q_id, "answers": {}},
+                                },
+                            )
 
                         elif rtype == "ToolCallRequest":
                             # External tool calls — we haven't registered any, but handle gracefully
                             tc_id = rparams.get("payload", {}).get("id", "")
-                            _send(proc, {
-                                "jsonrpc": "2.0",
-                                "id": req_id,
-                                "result": {
-                                    "tool_call_id": tc_id,
-                                    "return_value": {
-                                        "is_error": True,
-                                        "output": "Tool not available in aider context.",
-                                        "message": "Tool not registered.",
-                                        "display": [],
+                            _send(
+                                proc,
+                                {
+                                    "jsonrpc": "2.0",
+                                    "id": req_id,
+                                    "result": {
+                                        "tool_call_id": tc_id,
+                                        "return_value": {
+                                            "is_error": True,
+                                            "output": "Tool not available in aider context.",
+                                            "message": "Tool not registered.",
+                                            "display": [],
+                                        },
                                     },
                                 },
-                            })
+                            )
 
                     # Response to our requests (has id, no method)
                     elif "id" in msg and "method" not in msg:
@@ -222,29 +229,36 @@ class KimiWireClient:
 
         # 1. initialize handshake
         init_id = str(uuid.uuid4())
-        _send(proc, {
-            "jsonrpc": "2.0",
-            "method": "initialize",
-            "id": init_id,
-            "params": {
-                "protocol_version": self.PROTOCOL_VERSION,
-                "client": {"name": "aider-cli-agent", "version": "1.0.0"},
-                "capabilities": {"supports_question": True},
+        _send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "id": init_id,
+                "params": {
+                    "protocol_version": self.PROTOCOL_VERSION,
+                    "client": {"name": "aider-cli-agent", "version": "1.0.0"},
+                    "capabilities": {"supports_question": True},
+                },
             },
-        })
+        )
 
         # Small settle time — initialize response comes quickly
         import time
+
         time.sleep(0.3)
 
         # 2. send prompt
         prompt_id = str(uuid.uuid4())
-        _send(proc, {
-            "jsonrpc": "2.0",
-            "method": "prompt",
-            "id": prompt_id,
-            "params": {"user_input": prompt},
-        })
+        _send(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "method": "prompt",
+                "id": prompt_id,
+                "params": {"user_input": prompt},
+            },
+        )
 
         # 3. wait for completion
         finished = done.wait(timeout=self.timeout)
@@ -257,9 +271,7 @@ class KimiWireClient:
 
         if proc.returncode not in (0, None) and not text_parts:
             stderr = proc.stderr.read().strip() if proc.stderr else ""
-            raise CliAgentError(
-                f"kimi exited with code {proc.returncode}. stderr: {stderr[:500]}"
-            )
+            raise CliAgentError(f"kimi exited with code {proc.returncode}. stderr: {stderr[:500]}")
 
         return "".join(text_parts).strip()
 
@@ -326,9 +338,7 @@ class CliAgent:
             CliAgentError: if the binary is not found or the process fails.
         """
         if not self.is_available():
-            raise CliAgentError(
-                f"CLI binary '{self.spec['binary']}' not found on PATH."
-            )
+            raise CliAgentError(f"CLI binary '{self.spec['binary']}' not found on PATH.")
 
         if self.name == "kimi":
             client = KimiWireClient(timeout=self.timeout, env=self.extra_env)
@@ -348,13 +358,9 @@ class CliAgent:
                 env=env,
             )
         except subprocess.TimeoutExpired:
-            raise CliAgentError(
-                f"CLI '{self.name}' timed out after {self.timeout}s"
-            )
+            raise CliAgentError(f"CLI '{self.name}' timed out after {self.timeout}s")
         except FileNotFoundError:
-            raise CliAgentError(
-                f"CLI binary '{self.spec['binary']}' not found."
-            )
+            raise CliAgentError(f"CLI binary '{self.spec['binary']}' not found.")
 
         if result.returncode != 0:
             raise CliAgentError(
