@@ -719,8 +719,9 @@ A comprehensive security and architectural audit was performed on the codebase. 
 | Critical Security Issues | 12 | 0 |
 | High Priority Bugs | 18 | 6 |
 | Test Import Errors | 1 | 0 |
-| Files Modified | - | 15 |
-| Lines Changed | - | +238, -67 |
+| Files Modified | - | 18 |
+| Lines Changed | - | +282, -75 |
+| Test Status | 39 passed, 3 failed | 42 passed, 0 failed |
 
 ### Modified Files
 
@@ -731,16 +732,17 @@ A comprehensive security and architectural audit was performed on the codebase. 
 5. `aider/agents/registry.py` - Thread-safe CircuitBreaker
 6. `aider/agents/governor.py` - Thread-safe singleton
 7. `aider/agents/loop.py` - Shell injection fix
-8. `aider/a2a/commands.py` - Nested asyncio fixes
-9. `aider/openclaw_bridge.py` - Path traversal protection
-10. `aider/io.py` - Shell injection fix
-11. `aider/tools/router.py` - Nested asyncio fixes
-12. `aider/tools_v2/router.py` - Missing attribute fix
-13. `aider/tools_v2/terminal_watcher.py` - Bare except fixes
-14. `aider/tools_v2/mcp_manager.py` - Bare except fix
-15. `aider/coders/tool_coder_v2.py` - Bare except fix
-16. `tests/test_failure_modes.py` - Import path fix
-17. `aider/commands.py` - Unified `/auto` with Architect workflow
+8. `aider/agents/commands.py` - Nested asyncio fixes (7 calls)
+9. `aider/a2a/commands.py` - Nested asyncio fixes
+10. `aider/openclaw_bridge.py` - Path traversal protection
+11. `aider/io.py` - Shell injection fix
+12. `aider/tools/router.py` - Nested asyncio fixes
+13. `aider/tools_v2/router.py` - Missing attribute fix
+14. `aider/tools_v2/terminal_watcher.py` - Bare except fixes
+15. `aider/tools_v2/mcp_manager.py` - Bare except fix
+16. `aider/coders/tool_coder_v2.py` - Bare except fix
+17. `tests/test_failure_modes.py` - Import path fix
+18. `aider/commands.py` - Unified `/auto` with Architect workflow
 
 ### Remaining Work (Non-Critical)
 
