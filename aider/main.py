@@ -1181,6 +1181,22 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             pass
         return
 
+    if args.acp:
+        from aider.editor_protocol import run_acp_mode, ACP_AVAILABLE
+
+        if not ACP_AVAILABLE:
+            io.tool_error("ACP mode requires 'agent-client-protocol' package.")
+            io.tool_output("Install with: pip install agent-client-protocol")
+            return 1
+
+        io.tool_output("Starting Aider in ACP mode (Agent Client Protocol)...")
+        try:
+            import asyncio
+            asyncio.run(run_acp_mode(coder))
+        except KeyboardInterrupt:
+            pass
+        return
+
     if args.message:
         io.add_to_input_history(args.message)
         io.tool_output()

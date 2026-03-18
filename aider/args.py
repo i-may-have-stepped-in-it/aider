@@ -907,6 +907,12 @@ def get_parser(default_config_files, git_root):
         help="Run aider as an MCP server (stdio)",
         default=False,
     )
+    group.add_argument(
+        "--acp",
+        action="store_true",
+        help="Run aider as an ACP agent (Agent Client Protocol)",
+        default=False,
+    )
 
     ##########
     group = parser.add_argument_group("Deprecated model settings")
