@@ -1601,6 +1601,10 @@ class Coder:
                 self.warming_pings_left -= 1
                 self.next_cache_warm = time.time() + delay
 
+                # Skip cache warming for OpenClaw models (not supported)
+                if getattr(self.main_model, '_is_openclaw_endpoint', lambda: False)():
+                    continue
+
                 kwargs = dict(self.main_model.extra_params) or dict()
                 kwargs["max_tokens"] = 1
 

@@ -334,6 +334,38 @@ Tools execute automatically when safe. Destructive operations require confirmati
         from ..llm import litellm
         from ..tools.schema import ToolSchemaGenerator
 
+        # Check if using OpenClaw - use base send_completion for proper routing
+        if getattr(self.main_model, '_use_openclaw_model', lambda: False)():
+            # OpenClaw models need special handling - use parent's send_completion
+            # which properly routes through OpenClawModel
+            import hashlib
+            key = json.dumps({
+                "model": self.main_model.name,
+                "messages": messages,
+                "tools": True,
+                "temperature": self.temperature,
+            }, sort_keys=True).encode()
+            hash_object = hashlib.sha1(key)
+            
+            # Build functions dict from tools for send_completion compatibility
+            tools = ToolSchemaGenerator.generate_all(self)
+            if tools:
+                functions = [t["function"] for t in tools]
+                hash_obj, response = self.main_model.send_completion(
+                    messages=messages,
+                    functions=functions,
+                    stream=False,
+                    temperature=self.temperature,
+                )
+            else:
+                hash_obj, response = self.main_model.send_completion(
+                    messages=messages,
+                    functions=None,
+                    stream=False,
+                    temperature=self.temperature,
+                )
+            return response
+
         # Local tools (including MCP if self passed)
         tools = ToolSchemaGenerator.generate_all(self)
 
