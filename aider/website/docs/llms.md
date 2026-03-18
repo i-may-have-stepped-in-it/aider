@@ -21,6 +21,15 @@ Aider works best with these models, which are skilled at editing code:
 - [Claude 3.7 Sonnet](/docs/llms/anthropic.html)
 - [OpenAI o3, o4-mini and GPT-4.1](/docs/llms/openai.html)
 
+## Self-hosted models
+{: .no_toc }
+
+Aider can connect to self-hosted gateways for cost savings and privacy:
+
+- [OpenClaw Gateway](/docs/llms/openclaw.html) - Self-hosted AI agent gateway with tier routing
+- [Ollama](/docs/llms/ollama.html) - Run models locally
+- [OpenAI compatible APIs](/docs/llms/openai-compat.html) - Generic OpenAI-compatible endpoints
+
 
 ## Free models
 {: .no_toc }
