@@ -1869,7 +1869,14 @@ class Commands:
             self.io.tool_output('Usage: /swarm "task description" [--agents "arch,dev,test"]')
             return
 
-        swarm_skill = self.skills_registry.create("swarm", self.coder)
+        # Create proper SkillContext for swarm skill
+        from aider.skills.base import SkillContext
+        context = SkillContext(
+            coder=self.coder,
+            io=self.io,
+            verbose=self.verbose,
+        )
+        swarm_skill = self.skills_registry.create("swarm", context)
         if swarm_skill:
             _run_async_safely(swarm_skill.execute(task, agents_list))
 
