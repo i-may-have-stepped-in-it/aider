@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Optional
@@ -24,7 +25,7 @@ class CircuitState(Enum):
 
 
 class CircuitBreaker:
-    """Circuit breaker for agent execution - Issue 15."""
+    """Thread-safe circuit breaker for agent execution - Issue 15."""
     
     def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 60.0):
         self.failure_threshold = failure_threshold
@@ -32,30 +33,35 @@ class CircuitBreaker:
         self._state = CircuitState.CLOSED
         self._failure_count = 0
         self._last_failure_time = 0.0
+        self._lock = threading.Lock()  # Make thread-safe for sync usage
     
     @property
     def state(self):
-        if self._state == CircuitState.OPEN and (time.time() - self._last_failure_time >= self.recovery_timeout):
-            self._state = CircuitState.HALF_OPEN
-        return self._state
+        with self._lock:
+            if self._state == CircuitState.OPEN and (time.time() - self._last_failure_time >= self.recovery_timeout):
+                self._state = CircuitState.HALF_OPEN
+            return self._state
     
     def can_execute(self) -> bool:
-        if self.state == CircuitState.CLOSED:
+        current_state = self.state
+        if current_state == CircuitState.CLOSED:
             return True
-        if self.state == CircuitState.HALF_OPEN:
+        if current_state == CircuitState.HALF_OPEN:
             return True
         return False
     
     def record_success(self):
-        if self._state == CircuitState.HALF_OPEN:
-            self._state = CircuitState.CLOSED
-            self._failure_count = 0
+        with self._lock:
+            if self._state == CircuitState.HALF_OPEN:
+                self._state = CircuitState.CLOSED
+                self._failure_count = 0
     
     def record_failure(self):
-        self._failure_count += 1
-        self._last_failure_time = time.time()
-        if self._failure_count >= self.failure_threshold:
-            self._state = CircuitState.OPEN
+        with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+            if self._failure_count >= self.failure_threshold:
+                self._state = CircuitState.OPEN
 
 class AgentRegistry:
     """

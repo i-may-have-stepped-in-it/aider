@@ -2,14 +2,54 @@
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Callable, Any, Awaitable
 
 if TYPE_CHECKING:
     from aider.commands import Commands
     from aider.coders.base_coder import Coder
 
 logger = logging.getLogger(__name__)
+
+
+def _run_async_safely(coro: Awaitable[Any], timeout: float = 30.0) -> Any:
+    """
+    Safely run an async coroutine from synchronous code.
+    
+    Handles both cases:
+    - No event loop running: uses asyncio.run()
+    - Event loop already running: uses ThreadPoolExecutor with new event loop
+    
+    Args:
+        coro: The coroutine to run
+        timeout: Maximum time to wait
+        
+    Returns:
+        The result of the coroutine
+        
+    Raises:
+        RuntimeError: If the coroutine fails
+        TimeoutError: If execution exceeds timeout
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        # Already in async context - run in separate thread with new loop
+        def run_in_new_loop():
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(run_in_new_loop)
+            return future.result(timeout=timeout)
+    except RuntimeError:
+        # No event loop running - safe to use asyncio.run
+        return asyncio.run(coro)
 
 
 class A2ACommands:
@@ -111,7 +151,7 @@ class A2ACommands:
             return True
         
         try:
-            asyncio.run(do_send())
+            _run_async_safely(do_send())
             return f"Message sent to agent {agent_id}"
         except Exception as e:
             self.io.tool_error(f"Failed to send message: {e}")
@@ -161,7 +201,7 @@ class A2ACommands:
         
         try:
             self.io.tool_output(f"Requesting '{capability}' from agent {agent_id}...")
-            result = asyncio.run(do_request())
+            result = _run_async_safely(do_request())
             return f"Response from {agent_id}:\n{result}"
         except Exception as e:
             self.io.tool_error(f"Request failed: {e}")
@@ -194,7 +234,7 @@ class A2ACommands:
             return True
         
         try:
-            asyncio.run(do_broadcast())
+            _run_async_safely(do_broadcast())
             return f"Broadcast sent to all agents"
         except Exception as e:
             self.io.tool_error(f"Failed to broadcast: {e}")
@@ -229,7 +269,7 @@ class A2ACommands:
             return True
         
         try:
-            asyncio.run(do_delegate())
+            _run_async_safely(do_delegate())
             return f"Task delegated to agent {agent_id}"
         except Exception as e:
             self.io.tool_error(f"Failed to delegate: {e}")
@@ -244,7 +284,7 @@ class A2ACommands:
             return agents
         
         try:
-            agents = asyncio.run(do_list())
+            agents = _run_async_safely(do_list())
             if not agents:
                 return "No agents found"
             
@@ -274,7 +314,7 @@ class A2ACommands:
             return history
         
         try:
-            history = asyncio.run(do_history())
+            history = _run_async_safely(do_history())
             if not history:
                 return "No A2A messages found"
             

@@ -1730,22 +1730,25 @@ class Commands:
             self.io.tool_error(f"Unknown mcp action: {args}")
 
     def cmd_auto(self, args):
-        """Execute a task autonomously until a test command passes.
-        Usage: /auto "task description" [--test "test command"] [--turns N]
+        """Execute a task autonomously using the Architect workflow.
+        
+        This uses the full ArchitectCoder with:
+        - Librarian phase: Auto-discovers relevant files
+        - Architect phase: Plans with tool access
+        - Reviewer phase: Self-critiques the plan
+        - Editor phase: Executes with proper formatting
+        - Self-correction: Retries on test failures
+        
+        Provides parity with Claude Code, Codex, and Gemini.
+        
+        Usage: /auto "task description" [--test "test command"]
         """
         import re
         
         # Parse arguments
         task = None
         test_cmd = None
-        turns = 5
         
-        # Extract turns if present
-        turns_match = re.search(r'--turns\s+(\d+)', args)
-        if turns_match:
-            turns = int(turns_match.group(1))
-            args = re.sub(r'--turns\s+\d+', '', args)
-            
         # Extract test command if present
         test_match = re.search(r'--test\s+"([^"]+)"', args)
         if test_match:
@@ -1761,8 +1764,41 @@ class Commands:
             self.io.tool_output("Usage: /auto \"task description\" [--test \"test command\"]")
             return
 
-        self.coder.autonomous_agent.max_turns = turns
-        self.coder.autonomous_agent.run_task(task, test_cmd)
+        # Use ArchitectCoder for full autonomous workflow
+        from aider.coders.base_coder import Coder
+        
+        self.io.tool_output(f"🚀 Starting autonomous Architect workflow")
+        self.io.tool_output(f"📝 Task: {task}")
+        if test_cmd:
+            self.io.tool_output(f"🎯 Test: {test_cmd}")
+        
+        # Create architect coder with test configuration
+        architect_kwargs = dict(
+            io=self.io,
+            from_coder=self.coder,
+            edit_format="architect",
+            summarize_from_coder=False,
+            auto_test=bool(test_cmd),
+            test_cmd=test_cmd,
+        )
+        
+        # Only set auto_accept_architect if test command provided
+        # Otherwise let user review the plan
+        if test_cmd:
+            architect_kwargs['auto_accept_architect'] = True  # Auto-execute if tests pass
+        
+        architect = Coder.create(**architect_kwargs)
+        
+        # Run the task through the architect workflow
+        # This handles: discovery, planning, critique, editing, and self-correction
+        architect.run(with_message=task)
+        
+        # Switch back to original mode
+        raise SwitchCoder(
+            edit_format=self.coder.edit_format,
+            summarize_from_coder=False,
+            from_coder=architect,
+        )
 
     def cmd_swarm(self, args):
         """Solve a task using a collaborative swarm of agents.

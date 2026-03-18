@@ -94,16 +94,16 @@ class BackgroundProcess:
             if self.process.stdin:
                 try:
                     self.process.stdin.close()
-                except:
+                except Exception:
                     pass
             try:
                 # Kill the entire process group
                 os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
                 self.process.wait(timeout=2)
-            except:
+            except Exception:
                 try:
                     os.killpg(os.getpgid(self.process.pid), signal.SIGKILL)
-                except:
+                except Exception:
                     pass
         self.process = None
 

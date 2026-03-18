@@ -1,6 +1,7 @@
 import base64
 import functools
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -1132,12 +1133,17 @@ class InputOutput:
         if self.bell_on_next_input and self.notifications:
             if self.notifications_command:
                 try:
-                    result = subprocess.run(
-                        self.notifications_command, shell=True, capture_output=True
-                    )
-                    if result.returncode != 0 and result.stderr:
-                        error_msg = result.stderr.decode("utf-8", errors="replace")
-                        self.tool_warning(f"Failed to run notifications command: {error_msg}")
+                    # SECURITY: Parse command with shlex to avoid shell injection
+                    cmd_parts = shlex.split(self.notifications_command)
+                    if not cmd_parts:
+                        self.tool_warning("Invalid notifications command (empty after parsing)")
+                    else:
+                        result = subprocess.run(
+                            cmd_parts, shell=False, capture_output=True
+                        )
+                        if result.returncode != 0 and result.stderr:
+                            error_msg = result.stderr.decode("utf-8", errors="replace")
+                            self.tool_warning(f"Failed to run notifications command: {error_msg}")
                 except Exception as e:
                     self.tool_warning(f"Failed to run notifications command: {e}")
             else:

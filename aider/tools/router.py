@@ -325,10 +325,29 @@ class ToolRouter:
         start = time.time()
         
         try:
-            # Use asyncio.run for isolated async execution
-            output = asyncio.run(
-                self.sandbox.run(command, self.coder.root, timeout)
-            )
+            # Handle nested event loop - check if we're already in async context
+            try:
+                loop = asyncio.get_running_loop()
+                # Already in async context - create new loop in separate thread
+                import concurrent.futures
+                def run_in_new_loop():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(
+                            self.sandbox.run(command, self.coder.root, timeout)
+                        )
+                    finally:
+                        new_loop.close()
+                
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(run_in_new_loop)
+                    output = future.result(timeout=timeout + 5)
+            except RuntimeError:
+                # No event loop running - safe to use asyncio.run
+                output = asyncio.run(
+                    self.sandbox.run(command, self.coder.root, timeout)
+                )
             
             # Sandbox doesn't give us exit code directly, infer from output
             # (This is a limitation - sandbox abstracts exit codes)
@@ -520,7 +539,26 @@ class ToolRouter:
                 raise RuntimeError(f"Search failed: {error}")
         
         try:
-            output = asyncio.run(do_search())
+            # Handle nested event loop - check if we're already in async context
+            try:
+                loop = asyncio.get_running_loop()
+                # Already in async context - create new loop in separate thread
+                import concurrent.futures
+                def run_search_in_new_loop():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(do_search())
+                    finally:
+                        new_loop.close()
+                
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(run_search_in_new_loop)
+                    output = future.result(timeout=35)
+            except RuntimeError:
+                # No event loop running - safe to use asyncio.run
+                output = asyncio.run(do_search())
+            
             return ToolResult(
                 success=True,
                 output=output,

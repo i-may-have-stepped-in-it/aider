@@ -308,21 +308,50 @@ class HooksManager:
         return execution_result
     
     def _evaluate_condition(self, condition: str, context: Dict[str, Any]) -> bool:
-        """Evaluate a condition expression."""
+        """Evaluate a condition expression using safe AST parsing.
+        
+        SECURITY: Uses AST parsing instead of eval() to prevent code injection.
+        """
+        import ast
+        
+        # Allowed AST node types for safe expression evaluation
+        ALLOWED_NODES = (
+            ast.Expression, ast.BoolOp, ast.BinOp, ast.UnaryOp,
+            ast.Compare, ast.Name, ast.Constant, ast.Load,
+            ast.And, ast.Or, ast.Not,
+            ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+            ast.In, ast.NotIn, ast.Is, ast.IsNot,
+            ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod,
+            ast.List, ast.Tuple, ast.Dict, ast.Subscript,
+            ast.Attribute, ast.Call, ast.IfExp,
+        )
+        
         try:
-            # Simple evaluation - only allow specific context keys
-            allowed_names = {
+            tree = ast.parse(condition, mode='eval')
+            
+            # Validate only allowed node types
+            for node in ast.walk(tree):
+                if not isinstance(node, ALLOWED_NODES):
+                    logger.warning(f"Disallowed node type in condition: {type(node).__name__}")
+                    return False  # Fail closed
+            
+            # Create restricted namespace with context
+            namespace = {
                 "context": context,
-                "true": True,
-                "false": False,
-                "none": None,
+                "len": len,
+                "any": any,
+                "all": all,
+                "str": str,
+                "int": int,
+                "bool": bool,
             }
             
-            result = eval(condition, {"__builtins__": {}}, allowed_names)
+            result = eval(compile(tree, '<condition>', 'eval'), namespace)
             return bool(result)
+            
         except Exception as e:
             logger.warning(f"Condition evaluation failed: {e}")
-            return True  # Default to executing if condition can't be evaluated
+            return False  # Fail closed - don't execute if condition can't be evaluated
     
     def register_skill_hooks(self, skill_name: str) -> List[Hook]:
         """

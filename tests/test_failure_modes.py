@@ -270,9 +270,9 @@ async def test_skill_cancellation():
 
 async def test_hook_failure_stops_execution():
     """Test that hook failure stops execution when configured."""
-    from aider.hooks.manager import HookManager, HookPoint, HookConfig
+    from aider.hooks_manager import HooksManager, HookPoint, HookConfig
     
-    manager = HookManager()
+    manager = HooksManager()
     execution_order = []
     
     # Hook that fails
@@ -302,9 +302,9 @@ async def test_hook_failure_stops_execution():
 
 async def test_hook_dependency_failure():
     """Test that hooks skip if dependencies not met."""
-    from aider.hooks.manager import HookManager, HookPoint, HookConfig
+    from aider.hooks_manager import HooksManager, HookPoint, HookConfig
     
-    manager = HookManager()
+    manager = HooksManager()
     execution_order = []
     
     # Hook that depends on non-existent hook

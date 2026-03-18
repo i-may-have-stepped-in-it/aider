@@ -1,7 +1,8 @@
+import shlex
 import subprocess
 import time
 import os
-from typing import Optional
+from typing import Optional, List
 
 class AutonomousAgent:
     """
@@ -52,9 +53,15 @@ class AutonomousAgent:
 
             self.coder.io.tool_output(f"[Agent Turn {turn + 1}] 🧪 Validating with: {test_command}")
             try:
+                # SECURITY: Parse command with shlex to avoid shell injection
+                cmd_parts = shlex.split(test_command)
+                if not cmd_parts:
+                    self.coder.io.tool_error("❌ Invalid test command (empty after parsing)")
+                    break
+                
                 result = subprocess.run(
-                    test_command,
-                    shell=True,
+                    cmd_parts,
+                    shell=False,
                     capture_output=True,
                     text=True,
                     cwd=self.coder.root,

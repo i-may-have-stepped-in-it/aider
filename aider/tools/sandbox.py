@@ -211,6 +211,9 @@ seccomp
             # --private-tmp: Isolated /tmp
             # --shell=none: Don't use a shell (prevents escape via shell features)
             # --cwd=: Set working directory
+            # SECURITY: Parse command with shlex to safely pass as arguments
+            import shlex
+            parsed_command = shlex.split(command)
             cmd_parts = [
                 "firejail",
                 "--quiet",
@@ -219,9 +222,7 @@ seccomp
                 "--private-tmp",
                 "--shell=none",
                 f"--cwd={cwd}",
-                "/bin/sh",  # Use sh for command execution
-                "-c",
-                command
+                *parsed_command  # Pass as arguments, not shell string
             ]
             
             # Run with asyncio to handle timeout properly
@@ -451,10 +452,19 @@ class NoneSandbox(Sandbox):
             subprocess.TimeoutExpired: If command times out
             subprocess.CalledProcessError: If command fails
         """
-        # Run via shell to support pipes, redirects, etc.
-        # This is less secure but matches user expectations for "no sandbox"
-        process = await asyncio.create_subprocess_shell(
-            command,
+        # SECURITY: Parse command with shlex to avoid shell injection
+        # This maintains some functionality while being safer than direct shell
+        import shlex
+        try:
+            cmd_parts = shlex.split(command)
+        except ValueError as e:
+            raise subprocess.CalledProcessError(1, command, output=f"Invalid command syntax: {e}")
+        
+        if not cmd_parts:
+            raise subprocess.CalledProcessError(1, command, output="Empty command")
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd_parts,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=cwd,
@@ -462,8 +472,11 @@ class NoneSandbox(Sandbox):
             env={
                 "PATH": "/usr/local/bin:/usr/bin:/bin",
                 "HOME": os.path.expanduser("~"),
-                # Clear LD_PRELOAD to prevent library injection
+                # Clear dangerous environment variables
                 "LD_PRELOAD": "",
+                "LD_AUDIT": "",
+                "LD_DEBUG": "",
+                "PYTHONPATH": "",
             }
         )
         

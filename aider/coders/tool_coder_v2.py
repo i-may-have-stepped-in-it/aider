@@ -465,7 +465,7 @@ Tools execute automatically when safe. Destructive operations require confirmati
         """Destructor ensuring cleanup."""
         try:
             self.shutdown()
-        except:
+        except Exception:
             pass
     
     def __enter__(self):

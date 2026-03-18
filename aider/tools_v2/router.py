@@ -1243,7 +1243,7 @@ class ToolRouterV2:
                 end_time=time.time(),
             )
 
-        success = self.terminal_watcher.start_process(name, command, self.root)
+        success = self.terminal_watcher.start_process(name, command, self.coder.root)
 
         return ToolExecutionResult(
             tool_name="terminal_watch_start",
@@ -1695,7 +1695,7 @@ class ToolRouterV2:
         """Destructor - last resort cleanup."""
         try:
             self._cleanup()
-        except:
+        except Exception:
             # Cannot raise in destructor
             pass
     

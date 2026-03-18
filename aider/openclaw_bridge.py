@@ -32,6 +32,9 @@ DEFAULT_OPENCLAW_PATHS = [
 # Environment variable override
 OPENCLAW_SKILLS_PATH_ENV = "OPENCLAW_SKILLS_PATH"
 
+# SECURITY: Valid action/skill name pattern (alphanumeric, underscore, hyphen only)
+VALID_ACTION_NAME = re.compile(r'^[a-zA-Z0-9_-]+$')
+
 
 @dataclass
 class SkillMetadata:
@@ -563,8 +566,24 @@ class OpenClawBridge:
     
     def _find_script(self, skill_path: Path, skill_name: str, action: str) -> Optional[Path]:
         """Find the appropriate script for a skill action."""
+        # SECURITY: Validate action and skill names to prevent path traversal
+        if not VALID_ACTION_NAME.match(action):
+            logger.error(f"Invalid action name: {action}")
+            return None
+        
+        if not VALID_ACTION_NAME.match(skill_name):
+            logger.error(f"Invalid skill name: {skill_name}")
+            return None
+        
         scripts_dir = skill_path / "scripts"
         if not scripts_dir.exists():
+            return None
+        
+        # Resolve paths to prevent traversal
+        try:
+            real_scripts_dir = scripts_dir.resolve()
+        except (OSError, ValueError) as e:
+            logger.warning(f"Path resolution error: {e}")
             return None
         
         # Priority order for script names
@@ -581,8 +600,18 @@ class OpenClawBridge:
         ]
         
         for candidate in candidates:
-            if candidate.exists() and self._is_executable_script(candidate):
-                return candidate
+            try:
+                # Resolve and verify path is within scripts_dir
+                real_candidate = candidate.resolve()
+                if not str(real_candidate).startswith(str(real_scripts_dir)):
+                    logger.warning(f"Path traversal attempt detected: {candidate}")
+                    continue
+                
+                if real_candidate.exists() and self._is_executable_script(real_candidate):
+                    return real_candidate
+            except (OSError, ValueError) as e:
+                logger.warning(f"Path resolution error: {e}")
+                continue
         
         return None
     

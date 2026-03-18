@@ -190,7 +190,7 @@ class MCPServer:
             self.process.terminate()
             try:
                 self.process.wait(timeout=2)
-            except:
+            except Exception:
                 self.process.kill()
         self.process = None
 

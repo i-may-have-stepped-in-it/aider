@@ -1,5 +1,6 @@
 import time
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -19,11 +20,13 @@ class MissionGovernor:
     Prevents budget runaway and recursive agent explosion.
     """
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls, *args, **kwargs):
-        if not cls._instance:
-            cls._instance = super(MissionGovernor, cls).__new__(cls)
-            cls._instance._initialized = False
+        with cls._lock:
+            if not cls._instance:
+                cls._instance = super(MissionGovernor, cls).__new__(cls)
+                cls._instance._initialized = False
         return cls._instance
 
     def __init__(self, max_cost: float = 5.0, max_turns: int = 50, max_depth: int = 3):

@@ -8,7 +8,7 @@ import asyncio
 import logging
 import time
 import traceback
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
 
 from .cli_agent import is_cli_model, run_oneshot as cli_run_oneshot
 from .gateway import configure_gateway, create_gateway_model_name

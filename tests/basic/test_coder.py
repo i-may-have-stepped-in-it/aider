@@ -1332,21 +1332,22 @@ This command will print 'Hello, World!' to the console."""
             io = InputOutput(yes=True)
             io.confirm_ask = MagicMock(return_value=True)
 
-            # Create an ArchitectCoder with auto_accept_architect=True
-            with patch("aider.coders.architect_coder.AskCoder.__init__", return_value=None):
-                from aider.coders.architect_coder import ArchitectCoder
+            # Create an ArchitectCoder with auto_accept_architect=True using factory
+            coder = Coder.create(
+                main_model=self.GPT35,
+                edit_format="architect",
+                io=io,
+                auto_accept_architect=True,
+            )
+            coder.verbose = False
+            coder.total_cost = 0
+            coder.summarizer = MagicMock()
+            coder.summarizer.too_big.return_value = False
+            coder.cur_messages = [{"role": "user", "content": "Test task"}]
+            coder.done_messages = []
 
-                coder = ArchitectCoder()
-                coder.io = io
-                coder.main_model = self.GPT35
-                coder.auto_accept_architect = True
-                coder.verbose = False
-                coder.total_cost = 0
-                coder.cur_messages = []
-                coder.done_messages = []
-                coder.summarizer = MagicMock()
-                coder.summarizer.too_big.return_value = False
-
+            # Mock the critique_plan to avoid reviewer calls
+            with patch.object(coder, 'critique_plan', return_value="PASSED"):
                 # Mock editor_coder creation and execution
                 mock_editor = MagicMock()
                 with patch("aider.coders.architect_coder.Coder.create", return_value=mock_editor):
@@ -1367,25 +1368,22 @@ This command will print 'Hello, World!' to the console."""
             io = InputOutput(yes=False)
             io.confirm_ask = MagicMock(return_value=True)
 
-            # Create an ArchitectCoder with auto_accept_architect=False
-            with patch("aider.coders.architect_coder.AskCoder.__init__", return_value=None):
-                from aider.coders.architect_coder import ArchitectCoder
+            # Create an ArchitectCoder with auto_accept_architect=False using factory
+            coder = Coder.create(
+                main_model=self.GPT35,
+                edit_format="architect",
+                io=io,
+                auto_accept_architect=False,
+            )
+            coder.verbose = False
+            coder.total_cost = 0
+            coder.summarizer = MagicMock()
+            coder.summarizer.too_big.return_value = False
+            coder.cur_messages = [{"role": "user", "content": "Test task"}]
+            coder.done_messages = []
 
-                coder = ArchitectCoder()
-                coder.io = io
-                coder.main_model = self.GPT35
-                coder.auto_accept_architect = False
-                coder.verbose = False
-                coder.total_cost = 0
-                coder.cur_messages = []
-                coder.done_messages = []
-                coder.summarizer = MagicMock()
-                coder.summarizer.too_big.return_value = False
-                coder.cur_messages = []
-                coder.done_messages = []
-                coder.summarizer = MagicMock()
-                coder.summarizer.too_big.return_value = False
-
+            # Mock the critique_plan to avoid reviewer calls
+            with patch.object(coder, 'critique_plan', return_value="PASSED"):
                 # Mock editor_coder creation and execution
                 mock_editor = MagicMock()
                 with patch("aider.coders.architect_coder.Coder.create", return_value=mock_editor):
@@ -1406,17 +1404,20 @@ This command will print 'Hello, World!' to the console."""
             io = InputOutput(yes=False)
             io.confirm_ask = MagicMock(return_value=False)
 
-            # Create an ArchitectCoder with auto_accept_architect=False
-            with patch("aider.coders.architect_coder.AskCoder.__init__", return_value=None):
-                from aider.coders.architect_coder import ArchitectCoder
+            # Create an ArchitectCoder with auto_accept_architect=False using factory
+            coder = Coder.create(
+                main_model=self.GPT35,
+                edit_format="architect",
+                io=io,
+                auto_accept_architect=False,
+            )
+            coder.verbose = False
+            coder.total_cost = 0
+            coder.cur_messages = [{"role": "user", "content": "Test task"}]
+            coder.done_messages = []
 
-                coder = ArchitectCoder()
-                coder.io = io
-                coder.main_model = self.GPT35
-                coder.auto_accept_architect = False
-                coder.verbose = False
-                coder.total_cost = 0
-
+            # Mock the critique_plan to avoid reviewer calls
+            with patch.object(coder, 'critique_plan', return_value="PASSED"):
                 # Mock editor_coder creation and execution
                 mock_editor = MagicMock()
                 with patch("aider.coders.architect_coder.Coder.create", return_value=mock_editor):
