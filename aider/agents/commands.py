@@ -4,14 +4,54 @@ Agent commands for Aider (/agent spawn, /agent list, etc.)
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Any, Awaitable
 
 if TYPE_CHECKING:
     from aider.commands import Commands
     from aider.coders.base_coder import Coder
 
 logger = logging.getLogger(__name__)
+
+
+def _run_async_safely(coro: Awaitable[Any], timeout: float = 30.0) -> Any:
+    """
+    Safely run an async coroutine from synchronous code.
+    
+    Handles both cases:
+    - No event loop running: uses asyncio.run()
+    - Event loop already running: uses ThreadPoolExecutor with new event loop
+    
+    Args:
+        coro: The coroutine to run
+        timeout: Maximum time to wait
+        
+    Returns:
+        The result of the coroutine
+        
+    Raises:
+        RuntimeError: If the coroutine fails
+        TimeoutError: If execution exceeds timeout
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        # Already in async context - run in separate thread with new loop
+        def run_in_new_loop():
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(run_in_new_loop)
+            return future.result(timeout=timeout)
+    except RuntimeError:
+        # No event loop running - safe to use asyncio.run
+        return asyncio.run(coro)
 
 
 class AgentCommands:
@@ -137,7 +177,7 @@ class AgentCommands:
             return agent
         
         try:
-            agent = asyncio.run(do_spawn())
+            agent = _run_async_safely(do_spawn())
             self.io.tool_output(f"Spawned agent {agent.id} ({agent.name})")
             self.io.tool_output(f"Task: {task[:100]}{'...' if len(task) > 100 else ''}")
             if model:
@@ -169,7 +209,7 @@ class AgentCommands:
             return await self.registry.list_agents(status_filter)
         
         try:
-            agents = asyncio.run(do_list())
+            agents = _run_async_safely(do_list())
             if not agents:
                 return "No agents found"
             
@@ -196,7 +236,7 @@ class AgentCommands:
             return await self.registry.get(agent_id)
         
         try:
-            agent = asyncio.run(do_status())
+            agent = _run_async_safely(do_status())
             if not agent:
                 return f"Agent {agent_id} not found"
             
@@ -237,7 +277,7 @@ class AgentCommands:
             return await self.registry.get(agent_id)
         
         try:
-            agent = asyncio.run(do_result())
+            agent = _run_async_safely(do_result())
             if not agent:
                 return f"Agent {agent_id} not found"
             
@@ -277,7 +317,7 @@ class AgentCommands:
             return await self.registry.wait_for_completion(agent_id)
         
         try:
-            agent = asyncio.run(do_wait())
+            agent = _run_async_safely(do_wait())
             return f"Agent {agent_id} completed with status: {agent.status.name}"
         except Exception as e:
             self.io.tool_error(f"Failed to wait for agent: {e}")
@@ -295,7 +335,7 @@ class AgentCommands:
             return await self.registry.cancel(agent_id)
         
         try:
-            cancelled = asyncio.run(do_cancel())
+            cancelled = _run_async_safely(do_cancel())
             if cancelled:
                 return f"Agent {agent_id} cancelled"
             else:
@@ -319,7 +359,7 @@ class AgentCommands:
             return cancelled
         
         try:
-            cancelled = asyncio.run(do_clear())
+            cancelled = _run_async_safely(do_clear())
             return f"Cleared {len(cancelled)} active agents and removed completed agents"
         except Exception as e:
             self.io.tool_error(f"Failed to clear agents: {e}")
