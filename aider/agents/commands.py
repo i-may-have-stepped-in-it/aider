@@ -59,23 +59,28 @@ class AgentCommands:
 
     def __init__(self, commands):
         self.commands = commands
-        self.coder = commands.coder
         self.io = commands.io
         self._registry = None
         self._executor = None
 
     @property
+    def coder(self):
+        """Get the coder from commands (set dynamically)."""
+        return self.commands.coder
+
+    @property
     def registry(self):
         """Get the agent registry from the coder."""
         if self._registry is None:
-            if hasattr(self.coder, "agent_registry"):
+            if self.coder and hasattr(self.coder, "agent_registry") and self.coder.agent_registry:
                 self._registry = self.coder.agent_registry
             else:
                 # Lazy initialization
                 from .registry import AgentRegistry
 
                 self._registry = AgentRegistry()
-                self.coder.agent_registry = self._registry
+                if self.coder:
+                    self.coder.agent_registry = self._registry
         return self._registry
 
     @property
