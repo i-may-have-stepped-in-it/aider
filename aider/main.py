@@ -23,7 +23,7 @@ from aider.analytics import Analytics
 from aider.args import get_parser
 from aider.coders import Coder
 from aider.coders.base_coder import UnknownEditFormat
-from aider.commands import Commands, SwitchCoder
+# Commands imported later after potential agent patching
 from aider.copypaste import ClipboardWatcher
 from aider.deprecated import handle_deprecated_model_args
 from aider.format_settings import format_settings, scrub_sensitive_info
@@ -959,6 +959,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         except Exception as e:
             if args.verbose:
                 print(f"Failed to install agent commands: {e}", file=sys.stderr)
+
+    # Import Commands after potential agent patching
+    from aider.commands import Commands, SwitchCoder
 
     commands = Commands(
         io,
