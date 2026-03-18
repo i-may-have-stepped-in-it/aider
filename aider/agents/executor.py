@@ -265,18 +265,25 @@ class AgentExecutor:
             coder_class = ToolEnabledCoderV2
 
         # Create coder with isolated context
+        # Handle different coder types - AskCoder doesn't have map_tokens
+        map_tokens = getattr(parent_coder, 'map_tokens', 1024)
+        edit_format = getattr(agent, 'edit_format', None) or getattr(parent_coder, 'edit_format', 'diff')
+        repo = getattr(parent_coder, 'repo', None)
+        verbose = getattr(parent_coder, 'verbose', False)
+        system_prompt = getattr(parent_coder, 'system_prompt_override', None)
+        
         sub_coder = coder_class.create(
             main_model=model,
-            edit_format=agent.edit_format or parent_coder.edit_format,
+            edit_format=edit_format,
             io=io,
-            repo=parent_coder.repo,  # Share repo for file access
+            repo=repo,  # Share repo for file access
             fnames=agent.files,
             read_only_fnames=agent.readonly_files,
-            map_tokens=parent_coder.map_tokens,
-            verbose=parent_coder.verbose,
+            map_tokens=map_tokens,
+            verbose=verbose,
             # Don't inherit parent's conversation history
             from_coder=None,
-            system_prompt_override=parent_coder.system_prompt_override,
+            system_prompt_override=system_prompt,
         )
 
         # Share global stateful managers from parent to sub-agent if both are
