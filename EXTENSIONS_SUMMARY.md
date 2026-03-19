@@ -417,7 +417,7 @@ aider/agents/         # Multi-agent system (14 files)
 aider/skills/         # Skills system (10 files)
 aider/a2a/            # A2A protocol (4 files)
 aider/hooks/          # Hook implementations (2 files)
-aider/tools_v2/       # Tools v2 (9 files)
+aider/tools_v2/       # Tools v2 (17+ files, modularized)
 aider/editor_protocol/# ACP support (2 files)
 aider/indexers/       # Semantic indexing (1 file)
 ```

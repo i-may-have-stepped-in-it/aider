@@ -96,8 +96,10 @@ The `router.py` has been split into focused mixins:
 | `tools_v2/router_execution.py` | Preflight checks and resilient execution helpers |
 | `tools_v2/router_dispatch.py` | Dynamic tool execution (MCP integration) |
 | `tools_v2/router_observability.py` | Execution history, logging, and result tracking |
-| `tools_v2/router_search.py` | Search tool routing logic |
-| `tools_v2/router_terminal.py` | Terminal tool routing logic |
+| `tools_v2/router_files.py` | File operations, edit, git, and lint handlers |
+| `tools_v2/router_mcp.py` | Browser actions and MCP resource handlers |
+| `tools_v2/router_search.py` | Search tool routing (grep, find, index) |
+| `tools_v2/router_terminal.py` | Terminal watch and control handlers |
 
 ### Tests (1 file, ~500 lines)
 

@@ -336,6 +336,10 @@ The monolithic `router.py` has been split into focused mixins:
 | **RouterExecutionMixin** | `router_execution.py` | Preflight checks and resilient execution helpers |
 | **RouterDispatchMixin** | `router_dispatch.py` | Dynamic tool execution (MCP integration) |
 | **RouterObservabilityMixin** | `router_observability.py` | Execution history, logging, and result tracking |
+| **RouterFileOpsMixin** | `router_files.py` | File, edit, git, and lint handlers |
+| **RouterMCPMixin** | `router_mcp.py` | Browser actions and MCP resource handlers |
+| **RouterSearchMixin** | `router_search.py` | Search tools (grep, find, index search) |
+| **RouterTerminalMixin** | `router_terminal.py` | Terminal watch and control handlers |
 
 Key features:
 - No nested `asyncio.run()` calls (singleton thread pool)

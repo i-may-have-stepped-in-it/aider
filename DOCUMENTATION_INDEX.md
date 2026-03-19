@@ -152,6 +152,7 @@ Clean initialization without monkeypatching:
 ### Modularized Architecture
 - **Base Coder**: Split into 13 focused modules (`base_coder_*.py`)
 - **Commands**: Split into 6 modules (`commands_*.py`)
+- **Tool Router**: Split into 8 focused mixins (`router_*.py`)
 - **Auto-Discovery**: 100+ skills discovered automatically
 
 ### New Infrastructure
