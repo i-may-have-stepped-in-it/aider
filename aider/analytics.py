@@ -5,12 +5,8 @@ import time
 import uuid
 from pathlib import Path
 
-from mixpanel import MixpanelException
-from posthog import Posthog
-
 from aider import __version__
 from aider.dump import dump  # noqa: F401
-from aider.models import model_info_manager
 
 PERCENT = 10
 
@@ -86,6 +82,8 @@ class Analytics:
             self.disable(permanently_disable)
 
     def enable(self):
+        from posthog import Posthog
+
         if not self.user_id:
             self.disable(False)
             return
@@ -193,6 +191,8 @@ class Analytics:
         }
 
     def _redact_model_name(self, model):
+        from aider.models import model_info_manager
+
         if not model:
             return None
 
@@ -233,7 +233,11 @@ class Analytics:
         if self.mp:
             try:
                 self.mp.track(self.user_id, event_name, dict(properties))
-            except MixpanelException:
+            except Exception as err:
+                from mixpanel import MixpanelException
+
+                if not isinstance(err, MixpanelException):
+                    raise
                 self.mp = None  # Disable mixpanel on connection errors
 
         if self.ph:

@@ -4,11 +4,6 @@ Runtime dispatch helpers extracted from aider.main.
 
 from pathlib import Path
 
-from aider.async_utils import run_async_safely
-from aider.coders import Coder
-from aider.copypaste import ClipboardWatcher
-from aider.watch import FileWatcher
-
 
 def attach_runtime_services(args, coder, analytics, git_root, hooks_manager):
     """Attach file watching, clipboard support, and hooks to the coder."""
@@ -19,6 +14,8 @@ def attach_runtime_services(args, coder, analytics, git_root, hooks_manager):
         ignores.append(args.aiderignore)
 
     if args.watch_files:
+        from aider.watch import FileWatcher
+
         file_watcher = FileWatcher(
             coder,
             gitignores=ignores,
@@ -29,6 +26,8 @@ def attach_runtime_services(args, coder, analytics, git_root, hooks_manager):
         coder.file_watcher = file_watcher
 
     if args.copy_paste:
+        from aider.copypaste import ClipboardWatcher
+
         analytics.event("copy-paste mode")
         ClipboardWatcher(coder.io, verbose=args.verbose)
 
@@ -165,6 +164,7 @@ def dispatch_session_mode(args, io, coder, analytics):
 
     if args.acp:
         from aider.editor_protocol.agent import ACP_AVAILABLE, run_acp_mode
+        from aider.async_utils import run_async_safely
 
         if not ACP_AVAILABLE:
             io.tool_error("ACP mode requires 'agent-client-protocol' package.")
@@ -215,6 +215,7 @@ def dispatch_session_mode(args, io, coder, analytics):
 def run_interactive_session(args, io, coder, analytics, hooks_manager):
     """Run the main interactive coder loop including mode switches."""
     from aider.commands import SwitchCoder
+    from aider.coders import Coder
 
     analytics.event(
         "cli session",

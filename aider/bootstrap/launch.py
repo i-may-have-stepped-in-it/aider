@@ -11,21 +11,14 @@ import traceback
 from dataclasses import fields
 from pathlib import Path
 
+import importlib_resources
+
 try:
     import git
 except ImportError:
     git = None
 
-import importlib_resources
-from dotenv import load_dotenv
-
-from aider import __version__, models, urls, utils
-from aider.args import get_parser
-from aider.deprecated import handle_deprecated_model_args
-from aider.models import ModelSettings
-from aider.onboarding import offer_openrouter_oauth, select_default_model
-from aider.repo import ANY_GIT_ERROR, GitRepo
-from aider.session_runtime import SessionRuntime
+from aider import __version__
 
 
 def check_config_files_for_yes(config_files):
@@ -56,6 +49,7 @@ def get_git_root():
 
 def guessed_wrong_repo(io, git_root, fnames, git_dname):
     """After we parse the args, we can determine the real repo. Did we guess wrong?"""
+    from aider.repo import ANY_GIT_ERROR, GitRepo
 
     try:
         check_repo = Path(GitRepo(io, fnames, git_dname).root).resolve()
@@ -74,6 +68,8 @@ def guessed_wrong_repo(io, git_root, fnames, git_dname):
 
 
 def make_new_repo(git_root, io):
+    from aider.repo import ANY_GIT_ERROR
+
     try:
         repo = git.Repo.init(git_root)
         check_gitignore(git_root, io, False)
@@ -141,6 +137,8 @@ def setup_git(git_root, io):
 
 
 def check_gitignore(git_root, io, ask=True):
+    from aider.repo import ANY_GIT_ERROR
+
     if not git_root:
         return
 
@@ -194,6 +192,8 @@ def check_gitignore(git_root, io, ask=True):
 
 
 def check_streamlit_install(io):
+    from aider import utils
+
     return utils.check_pip_install_extra(
         io,
         "streamlit",
@@ -231,6 +231,10 @@ def parse_lint_cmds(lint_cmds, io):
 
 def prepare_main_model(args, argv, io, analytics, git_root):
     """Prepare model aliases, selection, settings, and lint commands."""
+    from aider import models, urls
+    from aider.models import ModelSettings
+    from aider.onboarding import offer_openrouter_oauth, select_default_model
+
     register_models(git_root, args.model_settings_file, io, verbose=args.verbose)
     register_litellm_models(git_root, args.model_metadata_file, io, verbose=args.verbose)
 
@@ -372,6 +376,8 @@ def prepare_main_model(args, argv, io, analytics, git_root):
 
 def apply_env_and_deprecated_args(args, io):
     """Apply env-var, API-key, and deprecated model argument side effects."""
+    from aider.deprecated import handle_deprecated_model_args
+
     if args.set_env:
         for env_setting in args.set_env:
             try:
@@ -422,6 +428,9 @@ def apply_env_and_deprecated_args(args, io):
 
 def prepare_repo_and_runtime(args, io, analytics, hooks_manager, main_model, fnames, git_dname):
     """Create the git repo wrapper if enabled and assemble the session runtime."""
+    from aider.repo import GitRepo
+    from aider.session_runtime import SessionRuntime
+
     repo = None
     if args.git:
         try:
@@ -532,6 +541,8 @@ def generate_search_path_list(default_file, git_root, command_line_file):
 
 
 def register_models(git_root, model_settings_fname, io, verbose=False):
+    from aider import models
+
     model_settings_files = generate_search_path_list(
         ".aider.model.settings.yml", git_root, model_settings_fname
     )
@@ -558,6 +569,8 @@ def register_models(git_root, model_settings_fname, io, verbose=False):
 
 
 def load_dotenv_files(git_root, dotenv_fname, encoding="utf-8"):
+    from dotenv import load_dotenv
+
     # Standard .env file search path
     dotenv_files = generate_search_path_list(
         ".env",
@@ -587,6 +600,10 @@ def load_dotenv_files(git_root, dotenv_fname, encoding="utf-8"):
 
 
 def register_litellm_models(git_root, model_metadata_fname, io, verbose=False):
+    import importlib_resources
+
+    from aider import models
+
     model_metadata_files = []
 
     # Add the resource file path
@@ -609,6 +626,9 @@ def register_litellm_models(git_root, model_metadata_fname, io, verbose=False):
 
 
 def sanity_check_repo(repo, io):
+    from aider import urls
+    from aider.repo import ANY_GIT_ERROR
+
     if not repo:
         return True
 
@@ -691,6 +711,8 @@ def is_first_run_of_new_version(io, verbose=False):
 
 
 def check_and_load_imports(io, is_first_run, verbose=False):
+    from aider import urls
+
     try:
         if is_first_run:
             if verbose:
@@ -754,6 +776,8 @@ def build_default_config_files(git_root):
 
 
 def parse_args(argv, git_root):
+    from aider.args import get_parser
+
     blank_aider_env = {key: value for key, value in os.environ.items() if key.startswith("AIDER_") and not value}
 
     for key in blank_aider_env:

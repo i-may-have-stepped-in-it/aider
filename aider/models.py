@@ -989,6 +989,8 @@ class Model(ModelSettings):
 
     def _use_openclaw_model(self):
         """Determine if we should use OpenClawModel for this request."""
+        is_openclaw_model = self.name == "openclaw" or self.name.startswith("openclaw:")
+
         # Check explicit override
         mode = os.environ.get("AIDER_OPENCLAW_MODE", "auto").lower()
         if mode == "disabled":
@@ -996,13 +998,17 @@ class Model(ModelSettings):
         if mode in ("responses", "http", "enabled"):
             return True
 
-        # Auto-detect based on endpoint
+        # In auto mode, only explicit OpenClaw model names should use the
+        # direct OpenClawModel path. Regular models should continue through
+        # LiteLLM even if routed via an OpenClaw-compatible endpoint.
         if mode == "auto":
-            return self._is_openclaw_endpoint()
+            return is_openclaw_model
 
         return False
 
     def send_completion(self, messages, functions, stream, temperature=None):
+        is_openclaw_model = self.name == "openclaw" or self.name.startswith("openclaw:")
+
         if os.environ.get("AIDER_SANITY_CHECK_TURNS"):
             sanity_check_messages(messages)
 
@@ -1069,7 +1075,8 @@ class Model(ModelSettings):
             self.github_copilot_token_to_open_ai_key(kwargs["extra_headers"])
 
         # Are we using OpenClaw Gateway? Add agent selection header
-        if self._is_openclaw_endpoint():
+        explicit_openclaw_gateway = bool(os.environ.get("AIDER_OPENCLAW_AGENT_ID"))
+        if self._is_openclaw_endpoint() and (is_openclaw_model or explicit_openclaw_gateway):
             if "extra_headers" not in kwargs:
                 kwargs["extra_headers"] = {}
 

@@ -10,17 +10,13 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from prompt_toolkit.enums import EditingMode
-
 from aider.bootstrap.launch import (
     should_background_semantic_index as launch_should_background_semantic_index,
     should_preload_imports as launch_should_preload_imports,
 )
-from aider.io import InputOutput
-from aider.format_settings import format_settings, scrub_sensitive_info
 
 
-def setup_io_with_error_handling(args, input=None, output=None, io_cls=InputOutput):
+def setup_io_with_error_handling(args, input=None, output=None, io_cls=None):
     """
     Setup InputOutput with proper error handling.
     
@@ -36,6 +32,13 @@ def setup_io_with_error_handling(args, input=None, output=None, io_cls=InputOutp
     Returns:
         InputOutput instance, or int error code on failure
     """
+    from prompt_toolkit.enums import EditingMode
+
+    if io_cls is None:
+        from aider.io import InputOutput
+
+        io_cls = InputOutput
+
     try:
         editing_mode = EditingMode.VI if args.vim else EditingMode.EMACS
         
@@ -142,6 +145,8 @@ def format_and_log_settings(parser, args, io):
         args: Parsed arguments
         io: InputOutput instance
     """
+    from aider.format_settings import format_settings, scrub_sensitive_info
+
     # Format and display settings if verbose
     if args.verbose:
         show = format_settings(parser, args)

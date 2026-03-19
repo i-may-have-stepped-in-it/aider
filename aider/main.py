@@ -9,7 +9,6 @@ import sys
 import webbrowser
 
 from aider import urls, utils
-from aider.analytics import Analytics
 from aider.bootstrap import launch as launch_bootstrap
 from aider.bootstrap.git_handler import handle_git_root_recursion
 from aider.bootstrap.gui import launch_gui
@@ -53,7 +52,6 @@ from aider.bootstrap.update_flows import (
     handle_update_flows,
     setup_git,
 )
-from aider.io import InputOutput
 from aider.llm import litellm  # noqa: F401; properly init litellm on launch
 from aider.report import report_uncaught_exceptions
 from aider.versioncheck import check_version, install_from_main_branch, install_upgrade
@@ -64,6 +62,25 @@ from .dump import dump  # noqa: F401
 # Re-export for backward compatibility
 importlib_resources = launch_bootstrap.importlib_resources
 load_dotenv_files = launch_bootstrap.load_dotenv_files
+
+
+def __getattr__(name):
+    if name == "InputOutput":
+        from aider.io import InputOutput
+
+        return InputOutput
+    if name == "Analytics":
+        from aider.analytics import Analytics
+
+        return Analytics
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _get_compat_attr(name):
+    value = globals().get(name)
+    if value is not None:
+        return value
+    return __getattr__(name)
 
 
 def main(argv=None, input=None, output=None, force_git_root=None, return_coder=False):
@@ -91,7 +108,7 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     handle_theme_setup(args)
 
     # Setup IO with error handling
-    io = setup_io_with_error_handling(args, input, output, io_cls=InputOutput)
+    io = setup_io_with_error_handling(args, input, output, io_cls=_get_compat_attr("InputOutput"))
     if isinstance(io, int):
         return io
 

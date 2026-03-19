@@ -21,7 +21,7 @@ class ToolCommandsMixin:
 
     def cmd_web(self, args, return_content=False):
         "Scrape a webpage, convert to markdown and send in a message"
-        from aider.scrape import Scraper, install_playwright
+        from aider import commands as commands_module
 
         url = args.strip()
         if not url:
@@ -30,15 +30,28 @@ class ToolCommandsMixin:
 
         self.io.tool_output(f"Scraping {url}...")
         if not self.scraper:
+            scraper_cls = commands_module.Scraper
+            install_playwright_fn = commands_module.install_playwright
+
+            if scraper_cls is None or install_playwright_fn is None:
+                from aider.scrape import Scraper, install_playwright
+
+                if scraper_cls is None:
+                    scraper_cls = Scraper
+                    commands_module.Scraper = Scraper
+                if install_playwright_fn is None:
+                    install_playwright_fn = install_playwright
+                    commands_module.install_playwright = install_playwright
+
             disable_playwright = getattr(self.args, "disable_playwright", False)
             if disable_playwright:
                 res = False
             else:
-                res = install_playwright(self.io)
+                res = install_playwright_fn(self.io)
                 if not res:
                     self.io.tool_warning("Unable to initialize playwright.")
 
-            self.scraper = Scraper(
+            self.scraper = scraper_cls(
                 print_error=self.io.tool_error,
                 playwright_available=res,
                 verify_ssl=self.verify_ssl,

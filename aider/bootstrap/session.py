@@ -4,9 +4,6 @@ Session assembly helpers extracted from aider.main.
 
 import os
 
-from aider.coders import Coder
-from aider.coders.base_coder import UnknownEditFormat
-from aider.history import ChatSummary
 from aider.urls import edit_formats
 
 
@@ -32,6 +29,8 @@ def create_commands(args, io, parser, read_only_fnames, runtime=None):
 
 def create_summarizer(args, main_model):
     """Create the chat summarizer for a session."""
+    from aider.history import ChatSummary
+
     return ChatSummary(
         [main_model.weak_model, main_model],
         args.max_chat_history_tokens or main_model.max_chat_history_tokens,
@@ -73,6 +72,9 @@ def create_coder(
     background_semantic_index=True,
 ):
     """Create the session coder and attach optional agent support."""
+    from aider.coders import Coder
+    from aider.coders.base_coder import UnknownEditFormat
+
     map_tokens = resolve_map_tokens(args, main_model)
 
     analytics.event("auto_commits", enabled=bool(args.auto_commits))

@@ -244,7 +244,7 @@ class InputOutput:
 
     def __init__(
         self,
-        pretty=True,
+        pretty=None,
         yes=None,
         input_history_file=None,
         chat_history_file=None,
@@ -272,6 +272,7 @@ class InputOutput:
         notifications=False,
         notifications_command=None,
     ):
+        explicit_pretty = pretty is not None
         self.placeholder = None
         self.interrupted = False
         self.never_prompts = set()
@@ -284,25 +285,9 @@ class InputOutput:
         else:
             self.notifications_command = notifications_command
 
-        no_color = os.environ.get("NO_COLOR")
-        if no_color is not None and no_color != "":
-            pretty = False
-
-        self.user_input_color = ensure_hash_prefix(user_input_color) if pretty else None
-        self.tool_output_color = ensure_hash_prefix(tool_output_color) if pretty else None
-        self.tool_error_color = ensure_hash_prefix(tool_error_color) if pretty else None
-        self.tool_warning_color = ensure_hash_prefix(tool_warning_color) if pretty else None
-        self.assistant_output_color = ensure_hash_prefix(assistant_output_color)
-        self.completion_menu_color = ensure_hash_prefix(completion_menu_color) if pretty else None
-        self.completion_menu_bg_color = (
-            ensure_hash_prefix(completion_menu_bg_color) if pretty else None
-        )
-        self.completion_menu_current_color = (
-            ensure_hash_prefix(completion_menu_current_color) if pretty else None
-        )
-        self.completion_menu_current_bg_color = (
-            ensure_hash_prefix(completion_menu_current_bg_color) if pretty else None
-        )
+        if pretty is None:
+            no_color = os.environ.get("NO_COLOR")
+            pretty = not (no_color is not None and no_color != "")
 
         self.code_theme = code_theme
 
@@ -344,11 +329,27 @@ class InputOutput:
         self.append_chat_history(f"\n# aider chat started at {current_time}\n\n")
 
         self.prompt_session = None
-        self.is_dumb_terminal = is_dumb_terminal()
+        self.is_dumb_terminal = os.environ.get("TERM") == "dumb"
 
-        if self.is_dumb_terminal:
+        if self.is_dumb_terminal and not explicit_pretty:
             self.pretty = False
             fancy_input = False
+
+        self.user_input_color = ensure_hash_prefix(user_input_color) if self.pretty else None
+        self.tool_output_color = ensure_hash_prefix(tool_output_color) if self.pretty else None
+        self.tool_error_color = ensure_hash_prefix(tool_error_color) if self.pretty else None
+        self.tool_warning_color = ensure_hash_prefix(tool_warning_color) if self.pretty else None
+        self.assistant_output_color = ensure_hash_prefix(assistant_output_color)
+        self.completion_menu_color = ensure_hash_prefix(completion_menu_color) if self.pretty else None
+        self.completion_menu_bg_color = (
+            ensure_hash_prefix(completion_menu_bg_color) if self.pretty else None
+        )
+        self.completion_menu_current_color = (
+            ensure_hash_prefix(completion_menu_current_color) if self.pretty else None
+        )
+        self.completion_menu_current_bg_color = (
+            ensure_hash_prefix(completion_menu_current_bg_color) if self.pretty else None
+        )
 
         self.status_data = {
             "mode": "CHAT",

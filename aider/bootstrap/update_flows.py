@@ -10,27 +10,33 @@ and analytics concerns. Broader startup orchestration belongs in
 import os
 import sys
 
-from aider import models, urls, utils
-from aider.analytics import Analytics
 from aider.bootstrap.launch import (
     check_gitignore,
     check_streamlit_install,
     setup_git,
 )
-from aider.hooks import create_hooks_manager
-from aider.llm import litellm
-from aider.versioncheck import check_version, install_from_main_branch, install_upgrade
 
 
 def handle_update_flows(
     args,
     io,
     analytics,
-    check_version_fn=check_version,
-    install_from_main_branch_fn=install_from_main_branch,
-    install_upgrade_fn=install_upgrade,
+    check_version_fn=None,
+    install_from_main_branch_fn=None,
+    install_upgrade_fn=None,
 ):
     """Handle update/install/check flows."""
+    if (
+        check_version_fn is None
+        or install_from_main_branch_fn is None
+        or install_upgrade_fn is None
+    ):
+        from aider.versioncheck import check_version, install_from_main_branch, install_upgrade
+
+        check_version_fn = check_version_fn or check_version
+        install_from_main_branch_fn = install_from_main_branch_fn or install_from_main_branch
+        install_upgrade_fn = install_upgrade_fn or install_upgrade
+
     # Check for update requests
     if args.just_check_update:
         update_available = check_version_fn(io, just_check=True, verbose=args.verbose)
@@ -84,6 +90,9 @@ def handle_ssl_setup(args):
     """Handle SSL verification setup."""
     if not args.verify_ssl:
         import httpx
+        from aider import models
+        from aider.llm import litellm
+
         os.environ["SSL_VERIFY"] = ""
         litellm._load_litellm()
         litellm._lazy_module.client_session = httpx.Client(verify=False)
@@ -94,6 +103,8 @@ def handle_ssl_setup(args):
 def handle_timeout_setup(args):
     """Handle timeout setup."""
     if args.timeout:
+        from aider import models
+
         models.request_timeout = args.timeout
 
 
@@ -115,6 +126,9 @@ def handle_theme_setup(args):
 
 def handle_analytics_setup(args, io):
     """Handle analytics setup."""
+    from aider import urls
+    from aider.analytics import Analytics
+
     analytics = Analytics(
         logfile=args.analytics_log,
         permanently_disable=args.analytics_disable,
@@ -145,6 +159,8 @@ def handle_analytics_setup(args, io):
 
 def handle_hooks_setup(args, io):
     """Handle hooks manager setup."""
+    from aider.hooks import create_hooks_manager
+
     hooks_manager = None
     if args.hooks_dir or args.enable_skills:
         hooks_manager = create_hooks_manager(io=io, verbose=args.verbose)

@@ -83,7 +83,7 @@ def try_to_select_default_model():
 
     # Prefer generic OpenAI-compatible endpoints over OpenRouter in this fork.
     if os.environ.get("OPENAI_API_BASE"):
-        return "openai/chat"
+        return "gpt-4o"
 
     # Prefer direct OpenAI over OpenRouter if both are configured.
     if os.environ.get("OPENAI_API_KEY"):

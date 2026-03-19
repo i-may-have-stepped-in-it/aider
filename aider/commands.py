@@ -18,6 +18,8 @@ from aider.repo import ANY_GIT_ERROR
 from .dump import dump  # noqa: F401
 
 _run_async_safely = run_async_safely
+Scraper = None
+install_playwright = None
 
 
 class SwitchCoder(Exception):
