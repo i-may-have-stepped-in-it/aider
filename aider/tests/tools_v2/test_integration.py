@@ -578,6 +578,27 @@ class TestToolRouterV2:
         # Should find both lines with "hello"
         assert "hello" in result.output.lower() or "found" in result.output.lower()
 
+    def test_browser_action_uses_openclaw_client(self, tool_router):
+        """Browser actions pass through the OpenClaw client."""
+        tool_router.openclaw_client.invoke = Mock(
+            return_value={"success": True, "output": "clicked button"}
+        )
+
+        result = tool_router.execute("browser_action", {"action": "click"})
+
+        assert result.success
+        assert result.output == "clicked button"
+        tool_router.openclaw_client.invoke.assert_called_once_with(
+            "browser_action", {"action": "click"}
+        )
+
+    def test_mcp_read_resource_requires_uri(self, tool_router):
+        """MCP resource reads require a URI."""
+        result = tool_router.execute("mcp_read_resource", {})
+
+        assert not result.success
+        assert "no resource uri specified" in result.error.lower()
+
     def test_git_tool_allowed_commands(self, tool_router, temp_working_dir):
         """Git tool allows safe commands."""
         # Initialize git repo

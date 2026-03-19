@@ -1,14 +1,15 @@
 import time
 
-from .router_observability import ToolExecutionResult
-
 
 class RouterMCPMixin:
     """Browser and MCP resource handlers."""
 
-    def _exec_browser_action(self, params):
+    def _exec_browser_action(self, params: dict):
         """Perform interactive browser actions via OpenClaw Gateway."""
+        from .router import ToolExecutionResult
+
         start_time = time.time()
+
         res = self.openclaw_client.invoke("browser_action", params)
 
         return ToolExecutionResult(
@@ -21,8 +22,10 @@ class RouterMCPMixin:
             end_time=time.time(),
         )
 
-    def _exec_mcp_list_resources(self, params):
+    def _exec_mcp_list_resources(self, params: dict):
         """List all available MCP resources."""
+        from .router import ToolExecutionResult
+
         start_time = time.time()
         resources = self.mcp_manager.get_all_resources()
 
@@ -42,8 +45,10 @@ class RouterMCPMixin:
             end_time=time.time(),
         )
 
-    def _exec_mcp_read_resource(self, params):
+    def _exec_mcp_read_resource(self, params: dict):
         """Read an MCP resource."""
+        from .router import ToolExecutionResult
+
         start_time = time.time()
         uri = params.get("uri")
         if not uri:
