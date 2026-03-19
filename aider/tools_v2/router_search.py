@@ -18,15 +18,17 @@ class RouterSearchMixin:
         query = params.get("query", "")
         path = params.get("path", ".")
         file_pattern = params.get("file_pattern", "*")
+        from .router import ToolExecutionResult
 
         if not query:
-            return self._make_tool_result(
-                "search",
-                params,
+            return ToolExecutionResult(
+                tool_name="search",
+                parameters=params,
                 success=False,
                 output="",
                 error="No search query specified",
                 start_time=start_time,
+                end_time=time.time(),
             )
 
         try:
@@ -49,24 +51,26 @@ class RouterSearchMixin:
             else:
                 truncated = False
 
-            return self._make_tool_result(
-                "search",
-                params,
+            return ToolExecutionResult(
+                tool_name="search",
+                parameters=params,
                 success=True,
                 output=output,
                 start_time=start_time,
+                end_time=time.time(),
                 sandbox_result=sandbox_result,
                 truncated=truncated,
             )
         except Exception as e:
             logger.exception("Search failed")
-            return self._make_tool_result(
-                "search",
-                params,
+            return ToolExecutionResult(
+                tool_name="search",
+                parameters=params,
                 success=False,
                 output="",
                 error=f"Search failed: {type(e).__name__}: {str(e)}",
                 start_time=start_time,
+                end_time=time.time(),
             )
 
     def _exec_find(self, params):
@@ -74,6 +78,7 @@ class RouterSearchMixin:
         start_time = time.time()
         pattern = params.get("pattern", "*")
         path = params.get("path", ".")
+        from .router import ToolExecutionResult
 
         try:
             command = f"find {path} -name '{pattern}' -type f 2>/dev/null | head -100"
@@ -88,22 +93,24 @@ class RouterSearchMixin:
             else:
                 output = "No files found."
 
-            return self._make_tool_result(
-                "find",
-                params,
+            return ToolExecutionResult(
+                tool_name="find",
+                parameters=params,
                 success=True,
                 output=output,
                 start_time=start_time,
+                end_time=time.time(),
                 sandbox_result=sandbox_result,
             )
         except Exception as e:
-            return self._make_tool_result(
-                "find",
-                params,
+            return ToolExecutionResult(
+                tool_name="find",
+                parameters=params,
                 success=False,
                 output="",
                 error=str(e),
                 start_time=start_time,
+                end_time=time.time(),
             )
 
     def _exec_index_search(self, params):
@@ -111,15 +118,17 @@ class RouterSearchMixin:
         start_time = time.time()
         query = params.get("query", "")
         limit = params.get("limit", 5)
+        from .router import ToolExecutionResult
 
         if not query:
-            return self._make_tool_result(
-                "index_search",
-                params,
+            return ToolExecutionResult(
+                tool_name="index_search",
+                parameters=params,
                 success=False,
                 output="",
                 error="No search query specified",
                 start_time=start_time,
+                end_time=time.time(),
             )
 
         try:
@@ -142,48 +151,53 @@ class RouterSearchMixin:
             else:
                 output = "No matches found in global semantic index."
 
-            return self._make_tool_result(
-                "index_search",
-                params,
+            return ToolExecutionResult(
+                tool_name="index_search",
+                parameters=params,
                 success=True,
                 output=output,
                 start_time=start_time,
+                end_time=time.time(),
             )
         except Exception as e:
             logger.exception("Global index search failed")
-            return self._make_tool_result(
-                "index_search",
-                params,
+            return ToolExecutionResult(
+                tool_name="index_search",
+                parameters=params,
                 success=False,
                 output="",
                 error=f"Global index search failed: {str(e)}",
                 start_time=start_time,
+                end_time=time.time(),
             )
 
     def _exec_definitions(self, params):
         """Get code definitions using grep-ast."""
         start_time = time.time()
         symbol = params.get("symbol", "")
+        from .router import ToolExecutionResult
 
         if not symbol:
-            return self._make_tool_result(
-                "definitions",
-                params,
+            return ToolExecutionResult(
+                tool_name="definitions",
+                parameters=params,
                 success=False,
                 output="",
                 error="No symbol specified",
                 start_time=start_time,
+                end_time=time.time(),
             )
 
         try:
             if not self.coder.repo_map:
-                return self._make_tool_result(
-                    "definitions",
-                    params,
+                return ToolExecutionResult(
+                    tool_name="definitions",
+                    parameters=params,
                     success=False,
                     output="",
                     error="Repository map not available",
                     start_time=start_time,
+                    end_time=time.time(),
                 )
 
             other_files = set(self.coder.get_all_abs_files()) - set(self.coder.abs_fnames)
@@ -192,36 +206,40 @@ class RouterSearchMixin:
             matches = [line for line in lines if symbol in line]
             output = "\n".join(matches) if matches else f"No definitions found for '{symbol}'"
 
-            return self._make_tool_result(
-                "definitions",
-                params,
+            return ToolExecutionResult(
+                tool_name="definitions",
+                parameters=params,
                 success=True,
                 output=output,
                 start_time=start_time,
+                end_time=time.time(),
             )
         except Exception as e:
-            return self._make_tool_result(
-                "definitions",
-                params,
+            return ToolExecutionResult(
+                tool_name="definitions",
+                parameters=params,
                 success=False,
                 output="",
                 error=f"Search failed: {str(e)}",
                 start_time=start_time,
+                end_time=time.time(),
             )
 
     def _exec_references(self, params):
         """Get code references using ripgrep."""
         start_time = time.time()
         symbol = params.get("symbol", "")
+        from .router import ToolExecutionResult
 
         if not symbol:
-            return self._make_tool_result(
-                "references",
-                params,
+            return ToolExecutionResult(
+                tool_name="references",
+                parameters=params,
                 success=False,
                 output="",
                 error="No symbol specified",
                 start_time=start_time,
+                end_time=time.time(),
             )
 
         try:
@@ -230,20 +248,22 @@ class RouterSearchMixin:
                 self.sandbox.execute(["/bin/sh", "-c", command], timeout=30.0)
             )
 
-            return self._make_tool_result(
-                "references",
-                params,
+            return ToolExecutionResult(
+                tool_name="references",
+                parameters=params,
                 success=True,
                 output=sandbox_result.output or f"No references found for '{symbol}'",
                 start_time=start_time,
+                end_time=time.time(),
                 sandbox_result=sandbox_result,
             )
         except Exception as e:
-            return self._make_tool_result(
-                "references",
-                params,
+            return ToolExecutionResult(
+                tool_name="references",
+                parameters=params,
                 success=False,
                 output="",
                 error=f"Reference search failed: {str(e)}",
                 start_time=start_time,
+                end_time=time.time(),
             )

@@ -578,6 +578,15 @@ class TestToolRouterV2:
         # Should find both lines with "hello"
         assert "hello" in result.output.lower() or "found" in result.output.lower()
 
+    def test_definitions_without_repo_map_returns_error(self, tool_router):
+        """Definitions requires an available repo map."""
+        tool_router.coder.repo_map = None
+
+        result = tool_router.execute("definitions", {"symbol": "hello"})
+
+        assert not result.success
+        assert "repository map not available" in result.error.lower()
+
     def test_browser_action_uses_openclaw_client(self, tool_router):
         """Browser actions pass through the OpenClaw client."""
         tool_router.openclaw_client.invoke = Mock(
@@ -598,6 +607,23 @@ class TestToolRouterV2:
 
         assert not result.success
         assert "no resource uri specified" in result.error.lower()
+
+    def test_terminal_watch_start_validates_required_fields(self, tool_router):
+        """Terminal watch start requires both name and command."""
+        result = tool_router.execute("terminal_watch_start", {"name": "worker"})
+
+        assert not result.success
+        assert "name and command are required" in result.error.lower()
+
+    def test_terminal_watch_read_uses_terminal_watcher(self, tool_router):
+        """Terminal watch read returns joined log lines from the watcher."""
+        tool_router.terminal_watcher.get_logs = Mock(return_value=["line1", "line2"])
+
+        result = tool_router.execute("terminal_watch_read", {"name": "worker", "lines": 2})
+
+        assert result.success
+        assert result.output == "line1\nline2"
+        tool_router.terminal_watcher.get_logs.assert_called_once_with("worker", 2)
 
     def test_git_tool_allowed_commands(self, tool_router, temp_working_dir):
         """Git tool allows safe commands."""

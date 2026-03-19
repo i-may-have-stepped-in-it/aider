@@ -19,6 +19,7 @@ from PIL import Image
 from aider import __version__
 from aider.dump import dump  # noqa: F401
 from aider.llm import litellm
+from aider.openclaw_metadata import OpenClawModelManager
 from aider.openrouter import OpenRouterModelManager
 from aider.sendchat import ensure_alternating_roles, sanity_check_messages
 from aider.utils import check_pip_install_extra
@@ -169,6 +170,7 @@ class ModelInfoManager:
         self.local_model_metadata = {}
         self.verify_ssl = True
         self._cache_loaded = False
+        self.openclaw_manager = OpenClawModelManager()
 
         # Manager for the cached OpenRouter model database
         self.openrouter_manager = OpenRouterModelManager()
@@ -244,6 +246,11 @@ class ModelInfoManager:
         return dict()
 
     def get_model_info(self, model):
+        if model.startswith("openclaw"):
+            openclaw_info = self.openclaw_manager.get_model_info(model)
+            if openclaw_info:
+                return openclaw_info
+
         cached_info = self.get_model_from_cached_json_db(model)
 
         litellm_info = None
