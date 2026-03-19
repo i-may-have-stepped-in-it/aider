@@ -140,4 +140,26 @@ aider --model openclaw:chat
 
 ---
 
-*Last Updated: 2026-03-18*
+## 🆕 What's New in v2.1.0
+
+### Bootstrap/Runtime Architecture
+Clean initialization without monkeypatching:
+- `bootstrap/` - Service initialization
+- `session_runtime.py` - Shared services container
+- `agents/service.py` - AgentService pattern
+- No more Coder class monkeypatching!
+
+### Modularized Architecture
+- **Base Coder**: Split into 13 focused modules (`base_coder_*.py`)
+- **Commands**: Split into 6 modules (`commands_*.py`)
+- **Auto-Discovery**: 100+ skills discovered automatically
+
+### New Infrastructure
+- `audit/` - Audit logging
+- `security/` - Security hardening
+- `memory/` - Memory management
+- `lsp/` - Language Server Protocol
+
+---
+
+*Last Updated: 2026-03-19*

@@ -49,17 +49,14 @@ User Prompt -> ToolEnabledCoder.run() -> Tool Loop
 | `aider/commands.py` | +90 lines | `/auto` command |
 | `aider/coders/__init__.py` | +2 lines | Export ToolEnabledCoder |
 
-### Tests
+### Tests (v1 Retired)
 
-| File | Tests | Purpose |
-|------|-------|---------|
-| `tests/tools/test_schema.py` | 36 | Schema generation |
-| `tests/tools/test_risk.py` | 60 | Risk classification |
-| `tests/tools/test_truncate.py` | 53 | Output truncation |
+**Status**: Tools v1 has been retired. The v1 test files were removed:
+- ~~`tests/tools/test_schema.py`~~
+- ~~`tests/tools/test_risk.py`~~
+- ~~`tests/tools/test_truncate.py`~~
 
-**Total**: 149 tests, all passing
-
-*Note: Router, sandbox, and integration tests to be added in follow-up.*
+**Current**: Tools v2 is now production. See `TOOL_SYSTEM_V2_SUMMARY.md` for v2 architecture.
 
 ---
 

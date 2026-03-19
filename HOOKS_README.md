@@ -2,7 +2,7 @@
 
 This document describes the hooks system added to Aider, which allows users to extend Aider's functionality by executing custom code at specific points in the lifecycle.
 
-> **Note**: This document covers the basic hooks system (`aider/hooks.py`). For advanced hooks with OpenClaw integration, type-safe enums, and configuration options, see `aider/hooks_manager.py` and `AGENTS.md`.
+> **Note**: As of v2.1.0, hooks are unified in `aider/hooks_manager.py`. The `aider/hooks.py` module is now a compatibility shim that preserves the legacy API. For advanced hooks with OpenClaw integration, type-safe enums, and configuration options, see `aider/hooks_manager.py` and `AGENTS.md`.
 
 ## Overview
 
@@ -189,12 +189,14 @@ To debug hooks, run Aider with `-v` or `--verbose` flag.
 
 ## File Locations
 
-- **Hooks module**: `aider/hooks.py`
+- **Unified hooks**: `aider/hooks_manager.py` (v2.1.0)
+- **Legacy compatibility**: `aider/hooks.py` (shim)
+- **Bootstrap**: `aider/hooks_bootstrap.py` (v2.1.0)
 - **Example hooks**: `aider/hooks_example.py`
 - **CLI arguments**: `aider/args.py`
-- **Command integration**: `aider/commands.py`
-- **Coder integration**: `aider/coders/base_coder.py`
-- **Initialization**: `aider/main.py`
+- **Command integration**: `aider/commands.py` (via runtime)
+- **Coder integration**: `aider/coders/base_coder.py` (via runtime)
+- **Initialization**: `aider/main.py` (creates runtime)
 
 ## Compatibility
 

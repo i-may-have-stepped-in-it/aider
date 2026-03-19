@@ -26,6 +26,28 @@ Skills are high-level capabilities that can:
 | `documentation` | Generate documentation | ✅ | 8 |
 | `architecture-docs` | Generate architecture docs | ✅ | - |
 
+## Auto-Discovery
+
+Skills are **automatically discovered** from multiple sources:
+
+1. **Python Skills** (`aider/skills/*.py`) - Classes inheriting from `Skill`
+2. **ACP Agents** (`~/.acpx/config.json`) - Dynamic agent delegation skills
+3. **YAML Skills** (`~/.config/aider/skills/*.yaml`) - User-defined skills
+4. **OpenClaw Skills** (`~/.openclaw/skills/`) - External skill definitions
+
+No registry edits needed - just drop files in the appropriate directory!
+
+```bash
+# View all discovered skills
+/skill list
+
+# Should show 100+ skills including:
+# - Built-in Python skills
+# - ACP agent skills (acp-claude, acp-codex, etc.)
+# - YAML-defined skills
+# - OpenClaw skills
+```
+
 ## Usage
 
 ### CLI Commands
@@ -152,6 +174,33 @@ class AnalysisSkill(MapReduceSkill):
         )
 ```
 
+### YAML-Defined Skills
+
+Skills can be defined entirely in YAML without Python code:
+
+```yaml
+# ~/.config/aider/skills/hello-world.yaml
+name: hello-world
+description: A simple example skill
+version: "1.0.0"
+author: user
+
+handler:
+  type: shell
+  command: echo "Hello, {{ name | default('World') }}!"
+
+parameters:
+  name:
+    type: string
+    description: Name to greet
+    required: false
+```
+
+Handler types:
+- `shell` - Execute shell commands
+- `python` - Execute Python code
+- `composite` - Chain multiple operations
+
 ## Skill Architecture
 
 ### Core Classes
@@ -161,12 +210,16 @@ aider/skills/
 ├── __init__.py          # Package exports
 ├── base.py              # Skill, SkillContext, SkillResult
 ├── agent_skill.py       # AgentSkillMixin, MapReduceSkill
-├── registry.py          # SkillRegistry
+├── registry.py          # SkillRegistry (auto-discovery)
+├── discovery.py         # Dynamic skill discovery
 ├── command.py           # /skill command integration
 ├── code_review.py       # Code review skills
 ├── test_generation.py   # Test generation skills
 ├── refactoring.py       # Refactoring skills
-└── documentation.py     # Documentation skills
+├── documentation.py     # Documentation skills
+├── dynamic_loader.py    # ACP agent skill loader
+├── yaml_loader.py       # YAML skill loader
+└── openclaw_adapter.py  # OpenClaw skill adapter
 ```
 
 ### Class Hierarchy

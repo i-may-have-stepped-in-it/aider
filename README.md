@@ -3,13 +3,14 @@
 </p>
 
 <h1 align="center">
-Aider (Security Hardened + Autonomous Agent Parity) v2.0.10
+Aider (Security Hardened + Autonomous Agent Parity) v2.1.0
 </h1>
 
 > **Note**: This is a security-hardened fork of the original [Aider](https://github.com/Aider-AI/aider) project by [Paul Gauthier](https://github.com/paul-gauthier). This fork includes:
 > - **Security fixes**: 12 critical vulnerabilities patched
 > - **Autonomous Agent Mode**: Full parity with Claude Code/Codex via `/auto` command
 > - **Multi-Agent Infrastructure**: Sub-agents, A2A protocol, skills system
+> - **Modularized Architecture**: Clean bootstrap/runtime, no monkeypatching (v2.1.0)
 
 <p align="center">
 AI Pair Programming in Your Terminal — Now with Enterprise-Grade Security
@@ -184,14 +185,20 @@ aider --model o3-mini --api-key openai=<key>
 - **Thread-safety** added to CircuitBreaker and MissionGovernor
 - **Async safety** - All nested asyncio.run() calls fixed
 
-### Architecture Improvements
-- **`/auto` command** - Now uses full Architect workflow (Librarian → Architect → Reviewer → Editor)
-- **Test fixes** - All 42 tests passing (was 39 passing, 3 failing)
-- **Documentation** - Comprehensive security audit added to AGENTS.md
+### Architecture Improvements (v2.1.0)
+- **Bootstrap/Runtime** - Clean initialization without monkeypatching
+- **Modularized Base Coder** - Split into 13 focused modules
+- **Modularized Commands** - Split into 6 focused modules  
+- **Auto-Discovery** - 100+ skills discovered automatically
+- **`/auto` command** - Full Architect workflow (Librarian → Architect → Reviewer → Editor)
+- **New Infrastructure** - Audit, security, memory, LSP modules
+- **Test fixes** - All tests passing
+- **Documentation** - Comprehensive architecture docs in AGENTS.md
 
 ### Code Quality
-- 47,576 lines of Python across 156 files
-- 705 tests across 51 test files
+- ~50,000 lines of Python across 196+ files
+- 700+ tests across 50+ test files
+- Modular architecture with clean separation
 - All modules import successfully
 
 ## 🤝 Contributing

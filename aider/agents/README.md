@@ -220,13 +220,15 @@ agent-timeout: 300
 - `aider/agents/executor.py`: Agent execution
 - `aider/agents/commands.py`: CLI commands
 - `aider/agents/integration.py`: Aider integration
+- `aider/agents/service.py`: AgentService for runtime integration (v2.1.0)
 
 ### Integration Points
 
 The system integrates with Aider via:
 - Commands system (`/agent` commands)
-- Coder class (agent_registry attribute)
+- SessionRuntime (agent_service, agent_registry)
 - CLI arguments (`--enable-agents`, `--max-agents`)
+- Bootstrap initialization (no monkeypatching in v2.1.0)
 
 ## Differences from kimi-cli
 

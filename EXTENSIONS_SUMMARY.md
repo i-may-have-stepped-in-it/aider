@@ -2,7 +2,78 @@
 
 > **Base Repository**: https://github.com/Aider-AI/aider  
 > **This Fork**: https://github.com/i-may-have-stepped-in-it/aider  
-> **Last Updated**: 2026-03-18
+> **Last Updated**: 2026-03-19
+
+---
+
+## 🏗️ Architecture Overhaul (v2.1.0)
+
+### Bootstrap/Runtime System
+
+Clean initialization without monkeypatching:
+
+**Files Added:**
+- `aider/bootstrap/` - Bootstrap package
+  - `runtime.py` - Service attachment
+  - `session.py` - Coder/command creation
+  - `gui.py` - GUI initialization
+- `aider/session_runtime.py` - Shared services container
+- `aider/agents/service.py` - AgentService pattern
+
+**Key Changes:**
+- No more Coder class monkeypatching
+- Dependency injection via `SessionRuntime`
+- Explicit service wiring
+
+### Modularized Base Coder
+
+Monolithic `base_coder.py` split into 13 focused modules:
+
+| Module | Purpose |
+|--------|---------|
+| `base_coder_context.py` | Context management |
+| `base_coder_control.py` | Control flow |
+| `base_coder_edits.py` | Edit application |
+| `base_coder_files.py` | File operations |
+| `base_coder_history.py` | Chat history |
+| `base_coder_lifecycle.py` | Lifecycle hooks |
+| `base_coder_llm_output.py` | LLM output |
+| `base_coder_messages.py` | Message formatting |
+| `base_coder_output.py` | Output handling |
+| `base_coder_paths.py` | Path resolution |
+| `base_coder_reply.py` | Reply processing |
+| `base_coder_runtime.py` | Runtime integration |
+| `base_coder_shell.py` | Shell execution |
+
+### Modularized Commands
+
+Monolithic `commands.py` split into 6 modules:
+
+| Module | Commands |
+|--------|----------|
+| `commands_files.py` | /add, /drop, /read-only |
+| `commands_modes.py` | /ask, /code, /architect |
+| `commands_tools.py` | /test, /lint, /git |
+| `commands_workflow.py` | /commit, /undo, /reset |
+| `commands_collaboration.py` | /share, /review |
+| `commands_misc.py` | Other commands |
+
+### Auto-Discovering Skills
+
+Skills automatically discovered from:
+- Python modules (`aider/skills/*.py`)
+- ACP config (`~/.acpx/config.json`)
+- YAML files (`~/.config/aider/skills/*.yaml`)
+- OpenClaw (`~/.openclaw/skills/`)
+
+**Result:** 100+ skills loaded automatically!
+
+### New Infrastructure Modules
+
+- `aider/audit/` - Audit logging and compliance
+- `aider/security/` - Security hardening
+- `aider/memory/` - Memory management
+- `aider/lsp/` - Language Server Protocol client
 
 This document summarizes all extensions and modifications made to the original Aider codebase.
 
@@ -123,6 +194,7 @@ Reusable, composable capabilities:
   - `base.py` - Skill base classes
   - `agent_skill.py` - Agent-enabled skills
   - `registry.py` - Skill discovery and registration
+  - `discovery.py` - Dynamic skill discovery (NEW in v2.1.0)
   - `command.py` - `/skill` CLI command integration
   - `code_review.py` - Code review skill
   - `test_generation.py` - Test generation skill
@@ -130,6 +202,9 @@ Reusable, composable capabilities:
   - `documentation.py` - Documentation generation skill
   - `swarm.py` - Agent swarm coordination
   - `web_delegation.py` - Web search delegation
+  - `dynamic_loader.py` - ACP agent skill loader
+  - `yaml_loader.py` - YAML skill loader
+  - `openclaw_adapter.py` - OpenClaw skill adapter
 
 **Built-in Skills:**
 | Skill | Description | Parallel |
@@ -173,13 +248,19 @@ manager.register_hook(
 ```
 
 **Files Added:**
-- `aider/hooks.py` - Basic hooks system
-- `aider/hooks_manager.py` - Advanced hooks with OpenClaw integration
+- `aider/hooks_manager.py` - Unified hooks system (enhanced in v2.1.0)
+- `aider/hooks.py` - Compatibility shim for legacy hooks (v2.1.0)
+- `aider/hooks_bootstrap.py` - Hooks initialization (v2.1.0)
 - `aider/hooks_config.py` - Hook configuration
 - `aider/hooks/` - Hook implementations
   - `cli_agent_hook.py` - CLI agent lifecycle hooks
   - `gateway_tier_hook.py` - Gateway tier management hooks
 - `aider/hooks_example.py` - Example hooks
+
+**v2.1.0 Changes:**
+- `aider/hooks.py` is now a compatibility shim
+- All hook functionality unified in `hooks_manager.py`
+- Legacy `hooks.register()` API still works
 
 **Documentation:**
 - [HOOKS_README.md](HOOKS_README.md)

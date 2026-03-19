@@ -22,7 +22,8 @@ aider/agents/
 ├── executor.py       # AgentExecutor for spawning agents
 ├── commands.py       # CLI commands (/agent subcommands)
 ├── integration.py    # Integration helpers for Aider
-└── patch_args.py     # CLI argument patches
+├── service.py        # AgentService for runtime integration (v2.1.0)
+└── patch_args.py     # CLI argument helper
 ```
 
 ### Component Details
@@ -278,7 +279,8 @@ aider/agents/registry.py       # Agent tracking
 aider/agents/executor.py       # Agent execution
 aider/agents/commands.py       # CLI commands
 aider/agents/integration.py    # Aider integration
-aider/agents/patch_args.py     # CLI arg patches
+aider/agents/service.py        # AgentService (v2.1.0)
+aider/agents/patch_args.py     # CLI arg helper
 aider/agents/README.md         # Documentation
 aider/test_agents.py           # Test suite
 aider/examples/multi_agent_example.py  # Usage examples

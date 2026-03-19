@@ -7,14 +7,16 @@ This document summarizes the completed integrations for Aider with OpenClaw gate
 ### 1. Hooks System ✓
 
 **Files:**
-- `aider/hooks.py` - Core hooks infrastructure
-- `aider/hooks_manager.py` - Extended hooks manager
+- `aider/hooks_manager.py` - Unified hooks system (v2.1.0)
+- `aider/hooks.py` - Compatibility shim for legacy hooks
+- `aider/hooks_bootstrap.py` - Hooks initialization
 - `aider/hooks_example.py` - Example hooks
 
 **Integration Points:**
-- `main.py` - Creates hooks manager, executes on_init/on_exit hooks
-- `commands.py` - Executes pre_command/post_command hooks
-- `base_coder.py` - Executes pre_send/post_send and pre_edit/post_edit hooks
+- `main.py` - Creates hooks manager via bootstrap
+- `commands.py` - Executes hooks via `_get_hooks_manager()`
+- `base_coder.py` - Executes hooks via `_get_hooks_manager()`
+- `session_runtime.py` - Hooks manager in runtime container
 
 **Hook Points:**
 - `pre_command` / `post_command` - Command execution
@@ -23,18 +25,27 @@ This document summarizes the completed integrations for Aider with OpenClaw gate
 - `pre_summarize` / `post_summarize` - Chat summarization
 - `on_init` / `on_exit` - Application lifecycle
 
+**v2.1.0 Changes:**
+- Unified hooks in `hooks_manager.py`
+- Legacy `aider/hooks.py` is now a compatibility shim
+- Hooks accessed via runtime or `_get_hooks_manager()` method
+
 ### 2. Skills System ✓
 
 **Files:**
 - `aider/skills/` - Skills package
   - `base.py` - Skill base classes
   - `agent_skill.py` - Agent-enabled skills mixin
-  - `registry.py` - Skill registry
+  - `registry.py` - Skill registry (auto-discovery in v2.1.0)
+  - `discovery.py` - Dynamic skill discovery (v2.1.0)
   - `command.py` - /skill command integration
   - `code_review.py` - Code review skills
   - `test_generation.py` - Test generation skills
   - `refactoring.py` - Refactoring skills
   - `documentation.py` - Documentation skills
+  - `dynamic_loader.py` - ACP agent skill loader
+  - `yaml_loader.py` - YAML skill loader
+  - `openclaw_adapter.py` - OpenClaw skill adapter
 
 **CLI Commands:**
 ```bash
@@ -47,7 +58,7 @@ This document summarizes the completed integrations for Aider with OpenClaw gate
 **Integration:**
 - `commands.py` - Added `cmd_skill()` and `completions_skill()` methods
 
-**Built-in Skills (9 total, all agent-enabled):**
+**Built-in Python Skills (9 agent-enabled):**
 | Skill | Description | Max Agents |
 |-------|-------------|------------|
 | `code-review` | Parallel code review | 10 |
@@ -59,6 +70,12 @@ This document summarizes the completed integrations for Aider with OpenClaw gate
 | `code-modernization` | Modernize code | 6 |
 | `documentation` | Generate docs | 8 |
 | `architecture-docs` | Architecture docs | - |
+
+**Auto-Discovered Skills (100+ total):**
+- Python skills (`aider/skills/*.py`)
+- ACP agent skills (`acp-claude`, `acp-codex`, etc.)
+- YAML-defined skills (`~/.config/aider/skills/`)
+- OpenClaw skills (`~/.openclaw/skills/`)
 
 ### 3. Multi-Agent System ✓
 
@@ -105,7 +122,35 @@ This document summarizes the completed integrations for Aider with OpenClaw gate
 - `HelpCoder` - Help mode
 - `AskCoder` - Ask mode
 
-### 5. OpenClaw Gateway Integration ✓
+### 5. Bootstrap/Runtime Architecture ✓ (v2.1.0)
+
+Clean initialization without monkeypatching:
+
+**Files:**
+- `aider/bootstrap/` - Bootstrap package
+  - `runtime.py` - Service attachment
+  - `session.py` - Coder/command creation
+  - `gui.py` - GUI initialization
+- `aider/session_runtime.py` - Session-scoped shared services
+- `aider/agents/service.py` - AgentService pattern
+
+**Integration:**
+- `main.py` - Creates `SessionRuntime`, passes to all components
+- `Coder` - Receives runtime in constructor
+- `Commands` - Receives runtime in constructor
+- No more Coder class monkeypatching!
+
+### 6. Modularized Architecture ✓ (v2.1.0)
+
+**Base Coder Split:**
+- `base_coder.py` core + 13 focused modules
+- Each module handles specific concerns
+
+**Commands Split:**
+- `commands.py` dispatcher + 6 focused modules
+- Files, modes, tools, workflow, collaboration, misc
+
+### 7. OpenClaw Gateway Integration ✓
 
 **Configuration:**
 - Default endpoint: `http://127.0.0.1:18789/v1`
@@ -117,27 +162,37 @@ This document summarizes the completed integrations for Aider with OpenClaw gate
 - Gateway handles provider selection, fallbacks, and tier logic
 - No direct API calls from sub-agents
 
-## Architecture Flow
+## Architecture Flow (v2.1.0)
 
 ```
-User -> Aider CLI -> Commands
-                    |
-                    ├── Hooks (pre_command)
-                    |
-                    ├── Skills (/skill command)
-                    |       └── Agent-enabled skills
-                    |               └── Spawn sub-agents
-                    |                       |
-                    |                       v
-                    |               OpenClaw Gateway
-                    |               (127.0.0.1:18789/v1)
-                    |                       |
-                    |                       v
-                    |               Model Routing
-                    |               (Provider selection)
-                    |
-                    └── Direct Coder
-                            |
+User -> Aider CLI
+          |
+          v
+   SessionRuntime (bootstrap)
+   ├── hooks_manager
+   ├── skill_registry
+   ├── agent_service
+   └── async_executor
+          |
+          v
+      Commands
+          |
+          ├── Hooks (pre_command via runtime)
+          |
+          ├── Skills (/skill command)
+          |       └── Agent-enabled skills
+          |               └── Spawn sub-agents
+          |                       |
+          |                       v
+          |               OpenClaw Gateway
+          |               (127.0.0.1:18789/v1)
+          |                       |
+          |                       v
+          |               Model Routing
+          |               (Provider selection)
+          |
+          └── Direct Coder (receives runtime)
+                  |
                             v
                     OpenClaw Gateway
                     (Model: chat or @tier)

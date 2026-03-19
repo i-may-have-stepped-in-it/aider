@@ -77,14 +77,15 @@ This is a **complete architectural rewrite** addressing every issue identified i
 | `tools_v2/compression.py` | 1,290 | Semantic compression |
 | `coders/tool_coder_v2.py` | 550 | Main coder integration |
 
-### Tests (2 files, ~2,400 lines)
+### Tests (1 file, ~500 lines)
 
 | File | Tests | Purpose |
 |------|-------|---------|
-| `tests/tools/` | 149 | v1 tests (still passing) |
-| `tests/tools_v2/test_integration.py` | 90 | v2 integration tests (56 passing) |
+| `aider/tests/tools_v2/test_integration.py` | 90 | v2 integration tests |
 
-**Total**: ~6,600 lines of production code + tests
+**Note**: Legacy v1 tests (`tests/tools/`) were removed as v1 is retired.
+
+**Total**: ~5,000 lines of production code + tests
 
 ---
 

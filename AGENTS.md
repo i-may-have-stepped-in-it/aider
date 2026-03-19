@@ -1,9 +1,16 @@
 # Aider - AI Pair Programming in Your Terminal
 
-> **Last Updated**: 2026-03-18  
-> **Version**: 2.0.10 (OpenClaw Security-Hardened Fork)
+> **Last Updated**: 2026-03-19  
+> **Version**: 2.1.0 (Modularized Architecture)
 > **Python Support**: 3.10, 3.11, 3.12, 3.13, 3.14  
 > **Documentation**: [Index](DOCUMENTATION_INDEX.md) | [OpenClaw](OPENCLAW_INTEGRATION.md) | [Skills](SKILLS.md)
+> 
+> **Major Changes in 2.1.0:**
+> - Bootstrap/runtime architecture (no monkeypatching)
+> - Modularized base_coder (13 focused modules)
+> - Modularized commands (6 focused modules)
+> - Auto-discovering skill system (100+ skills)
+> - New infrastructure: audit, security, memory, LSP
 
 ## Project Overview
 
@@ -20,30 +27,47 @@
 
 ```
 aider/
-├── main.py              # Application entry point and initialization
-├── args.py              # Command-line argument parsing (configargparse)
-├── commands.py          # Interactive command handling (/add, /drop, etc.)
-├── coders/              # LLM interaction and code editing strategies
-├── agents/              # Multi-agent system for parallel task execution
-├── skills/              # Reusable capabilities (code review, test generation, etc.)
-├── hooks/               # Extension hooks implementations
-├── hooks.py             # Basic hooks system (legacy)
-├── hooks_manager.py     # Advanced hooks with OpenClaw integration
-├── tools/               # RiskLevel only (v1 retired)
-├── tools_v2/            # Tool execution system (production)
-├── a2a/                 # Agent-to-Agent (A2A) protocol
-├── mcp/                 # Model Context Protocol server
-├── editor_protocol/     # Editor/IDE integration protocol
-├── indexers/            # Code indexing and retrieval (semantic)
-├── resources/           # Resource management
-├── repo.py              # Git repository integration
-├── repomap.py           # Repository mapping for context
-├── io.py                # Input/Output handling
-├── models.py            # LLM model configuration and settings
-├── linter.py            # Code linting integration
-├── analytics.py         # Usage analytics
-├── onboarding.py        # First-run onboarding flow
-└── website/             # Documentation website (Jekyll)
+├── main.py                   # Application entry point
+├── args.py                   # Command-line argument parsing
+├── session_runtime.py        # Session-scoped shared services container
+├── async_utils.py            # Safe async/sync bridging helpers
+├── bootstrap/                # Bootstrap and initialization
+│   ├── runtime.py            # Runtime service attachment
+│   ├── session.py            # Coder/command creation
+│   └── gui.py                # GUI bootstrap
+├── coders/                   # LLM interaction and code editing
+│   ├── base_coder.py         # Core coder (modularized)
+│   ├── base_coder_*.py       # Split modules (context, edits, files, history, etc.)
+│   └── ...                   # Various coder implementations
+├── commands.py               # Main commands dispatcher
+├── commands_*.py             # Split command modules (files, modes, tools, workflow, etc.)
+├── agents/                   # Multi-agent system
+│   ├── service.py            # AgentService for managing agents
+│   ├── registry.py           # Agent registry with circuit breaker
+│   ├── executor.py           # Agent execution engine
+│   ├── commands.py           # /agent CLI commands
+│   └── integration.py        # Agent integration (no monkeypatching)
+├── skills/                   # Reusable capabilities
+│   ├── base.py               # Skill base classes
+│   ├── registry.py           # Auto-discovering skill registry
+│   ├── discovery.py          # Dynamic skill discovery
+│   ├── command.py            # /skill CLI command
+│   └── ...                   # Skill implementations
+├── hooks_manager.py          # Unified hooks system
+├── hooks.py                  # Compatibility shim for legacy hooks
+├── hooks_bootstrap.py        # Hooks initialization
+├── tools_v2/                 # Production tool execution
+├── a2a/                      # Agent-to-Agent protocol
+├── mcp/                      # Model Context Protocol server
+├── audit/                    # Audit logging and compliance
+├── security/                 # Security hardening
+├── memory/                   # Memory management
+├── lsp/                      # Language Server Protocol client
+├── editor_protocol/          # Editor/IDE integration
+├── indexers/                 # Semantic code indexing
+├── repo.py                   # Git repository integration
+├── io.py                     # Input/Output handling
+└── ...
 ```
 
 ### Coder Classes (Edit Formats)
@@ -60,6 +84,71 @@ Aider supports multiple edit formats through the `coders/` module:
 - **HelpCoder** - Built-in help system
 
 Each coder has an associated prompts file (e.g., `editblock_prompts.py`).
+
+### Bootstrap Architecture (`bootstrap/`)
+
+The bootstrap module provides clean initialization without monkeypatching:
+
+- **runtime.py** - Service attachment (file watching, clipboard, hooks)
+- **session.py** - Coder and command creation with dependency injection
+- **gui.py** - GUI initialization
+
+Key features:
+- No monkeypatching - clean dependency injection
+- `SessionRuntime` container for shared services
+- Explicit service wiring via `attach_runtime_services()`
+
+### Session Runtime (`session_runtime.py`)
+
+Central container for session-scoped shared services:
+
+```python
+@dataclass
+class SessionRuntime:
+    io: object                    # I/O handling
+    analytics: object             # Analytics tracking
+    hooks_manager: object         # Hooks system
+    skill_registry: object        # Skills registry
+    agent_service: object         # Agent management
+    agent_registry: object        # Agent registry
+    a2a_bus: object              # A2A message bus
+    async_executor: object       # Async execution
+```
+
+The runtime is created in `main.py` and passed to all components, eliminating global state and monkeypatching.
+
+### Modularized Base Coder (`coders/base_coder_*.py`)
+
+The monolithic `base_coder.py` has been split into focused modules:
+
+| Module | Purpose |
+|--------|---------|
+| `base_coder_context.py` | Context management |
+| `base_coder_control.py` | Control flow |
+| `base_coder_edits.py` | Edit application |
+| `base_coder_files.py` | File operations |
+| `base_coder_history.py` | Chat history management |
+| `base_coder_lifecycle.py` | Lifecycle hooks |
+| `base_coder_llm_output.py` | LLM output handling |
+| `base_coder_messages.py` | Message formatting |
+| `base_coder_output.py` | Output handling |
+| `base_coder_paths.py` | Path resolution |
+| `base_coder_reply.py` | Reply processing |
+| `base_coder_runtime.py` | Runtime integration |
+| `base_coder_shell.py` | Shell command execution |
+
+### Modularized Commands (`commands_*.py`)
+
+The monolithic `commands.py` has been split into focused modules:
+
+| Module | Commands |
+|--------|----------|
+| `commands_files.py` | /add, /drop, /read-only |
+| `commands_modes.py` | /ask, /code, /architect |
+| `commands_tools.py` | /test, /lint, /git |
+| `commands_workflow.py` | /commit, /undo, /reset |
+| `commands_collaboration.py` | /share, /review |
+| `commands_misc.py` | Other commands |
 
 ### Multi-Agent System (`agents/`)
 
@@ -83,52 +172,51 @@ Key features:
 
 ### Skills System (`skills/`)
 
-Skills are reusable, composable capabilities:
+Skills are reusable, composable capabilities with **auto-discovery**:
 
 - **base.py** - Skill base classes (Skill, SkillContext, SkillResult)
 - **agent_skill.py** - Agent-enabled skills with parallel execution
-- **registry.py** - Skill discovery and registration
+- **registry.py** - Auto-discovering skill registry (no manual imports needed)
+- **discovery.py** - Dynamic skill discovery from filesystem
 - **command.py** - `/skill` CLI command integration
-- **code_review.py** - Code review skill
-- **test_generation.py** - Test generation skill
-- **refactoring.py** - Refactoring skill
-- **documentation.py** - Documentation generation skill
+- **dynamic_loader.py** - Dynamic ACP agent skill loading
+- **yaml_loader.py** - YAML-defined skill loading
+- **openclaw_adapter.py** - OpenClaw skill adapter
 
-### Hooks System
+#### Auto-Discovery
 
-Aider has two layers of hooks for extending functionality:
+Skills are automatically discovered from:
+1. **Python modules** (`aider/skills/*.py`) - Classes inheriting from `Skill`
+2. **ACP config** (`~/.acpx/config.json`) - Dynamic agent skills
+3. **YAML files** (`~/.config/aider/skills/*.yaml`) - User-defined skills
+4. **OpenClaw** (`~/.openclaw/skills/`) - External skill definitions
 
-#### Basic Hooks (`aider/hooks.py`)
+No code edits needed to add new skills - just drop files in the appropriate directory!
 
-Simple callback-based hook system:
-
-- **pre_command/post_command** - Command execution hooks
-- **pre_send/post_send** - LLM message hooks
-- **pre_edit/post_edit** - File edit hooks
-- **pre_summarize/post_summarize** - Chat summarization hooks
-- **on_init/on_exit** - Lifecycle hooks
-
-Usage:
 ```python
-from aider.hooks import create_hooks_manager
-
-hooks = create_hooks_manager(io=io, verbose=True)
-hooks.register("pre_command", my_callback)
+# Example: Auto-discovery works automatically
+from aider.skills.registry import SkillRegistry
+registry = SkillRegistry()  # 100+ skills auto-loaded
 ```
 
-#### Advanced Hooks (`aider/hooks_manager.py`)
+### Hooks System (`hooks_manager.py`)
 
-OpenClaw-integrated hooks with type safety and configuration:
+Unified hooks system with OpenClaw integration:
 
-- **HookPoint** enum for type-safe hook registration
-- **HookConfig** for priority, timeout, retry logic
-- **Skill integration** - Auto-register hooks from skills
-- **Execution history** tracking
+#### Unified Hooks Manager
 
-Key components:
-- `HookPoint` - Enum of lifecycle points (PRE_COMMIT, POST_EDIT, etc.)
-- `HookConfig` - Configuration (priority, async, timeout, retries)
-- `HooksManager` - Registration, execution, and history
+All hook functionality is centralized in `hooks_manager.py`:
+
+- **HookPoint** enum - Type-safe hook points (PRE_EDIT, POST_COMMAND, etc.)
+- **HookConfig** - Configuration (priority, async, timeout, retries, dependencies)
+- **HooksManager** - Registration, execution, and history
+
+Key features:
+- Legacy compatibility via `hooks.py` shim
+- Dependency management between hooks
+- Stop-on-failure support
+- Execution history tracking
+- Skill auto-registration
 
 Usage:
 ```python
@@ -139,14 +227,17 @@ manager.register_hook(
     name="my-hook",
     hook_point=HookPoint.PRE_EDIT,
     callback=my_function,
-    config=HookConfig(priority=100)
+    config=HookConfig(priority=100, stop_on_failure=True)
 )
 ```
 
-#### Hook Implementations (`aider/hooks/`)
+#### Legacy Compatibility (`hooks.py`)
 
-- **cli_agent_hook.py** - CLI agent lifecycle hooks
-- **gateway_tier_hook.py** - Gateway tier management hooks
+The `aider.hooks` module is now a compatibility shim:
+
+```python
+from aider.hooks import create_hooks_manager  # Still works!
+```
 
 See `HOOKS_README.md` and `HOOKS_QUICKSTART.md` for detailed usage.
 
@@ -227,6 +318,38 @@ Features:
 - Semantic similarity search
 - Integration with repomap for context retrieval
 
+### Security Module (`security/`)
+
+Security hardening and vulnerability scanning:
+
+- Policy enforcement
+- Secure defaults
+- Vulnerability detection
+
+### Audit Module (`audit/`)
+
+Audit logging and compliance:
+
+- Operation logging
+- Change tracking
+- Compliance reporting
+
+### Memory Module (`memory/`)
+
+Memory management and optimization:
+
+- Context window optimization
+- Memory pressure handling
+- Token usage tracking
+
+### LSP Client (`lsp/`)
+
+Language Server Protocol client:
+
+- IDE integration
+- Symbol navigation
+- Diagnostics
+
 ## Technology Stack
 
 ### Core Dependencies
@@ -247,6 +370,19 @@ Features:
 - **Build Backend**: `setuptools` with `setuptools_scm`
 - **Version Management**: `setuptools_scm` (auto-generated in `aider/_version.py`)
 - **Dependency Management**: `pip-tools` (via `scripts/pip-compile.sh`)
+
+### Async Utilities
+
+The `async_utils.py` module provides safe async/sync bridging:
+
+```python
+from aider.async_utils import run_async_safely
+
+# Safe execution without nested asyncio.run() issues
+result = run_async_safely(async_function(), timeout=30.0)
+```
+
+This eliminates nested event loop crashes and provides consistent execution across the codebase.
 
 ## Development Setup
 
@@ -344,9 +480,9 @@ Test directories:
 - `tests/help/` - Help system tests
 - `tests/browser/` - Browser automation tests
 - `tests/scrape/` - Web scraping tests
-- `tests/tools/` - Tool system integration tests
-- `aider/tests/tools/` - DEPRECATED: Old tool tests (kept for reference)
-- `aider/tests/tools_v2/` - Tool system tests (production)
+- `tests/test_*.py` - Skill, agent, integration tests
+- `aider/tests/tools/` - Tool v1 tests (risk, schema, truncate)
+- `aider/tests/tools_v2/` - Tool v2 integration tests (production)
 
 ### Building Documentation
 
