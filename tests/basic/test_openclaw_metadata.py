@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from aider.models import Model
 from aider.models import ModelInfoManager
 from aider.openclaw_metadata import OpenClawModelManager
 
@@ -90,6 +91,49 @@ def test_model_info_manager_uses_openclaw_manager(monkeypatch):
     info = mim.get_model_info("openclaw:chat")
 
     assert info == stub_info
+
+
+def test_model_info_manager_uses_openclaw_manager_for_gateway_tier(monkeypatch):
+    stub_info = {
+        "max_input_tokens": 204800,
+        "max_tokens": 204800,
+        "max_output_tokens": 204800,
+        "input_cost_per_token": 0.0,
+        "output_cost_per_token": 0.0,
+        "litellm_provider": "openclaw",
+        "openclaw_metadata_source": "gateway",
+    }
+
+    monkeypatch.setattr(
+        "aider.models.OpenClawModelManager.get_model_info",
+        lambda self, model: stub_info if model == "@speed" else {},
+    )
+
+    mim = ModelInfoManager()
+    info = mim.get_model_info("@speed")
+
+    assert info == stub_info
+
+
+def test_gateway_tier_model_gets_openclaw_metadata(monkeypatch):
+    stub_info = {
+        "max_input_tokens": 204800,
+        "max_tokens": 204800,
+        "max_output_tokens": 204800,
+        "input_cost_per_token": 0.0,
+        "output_cost_per_token": 0.0,
+        "litellm_provider": "openclaw",
+        "openclaw_metadata_source": "builtin",
+    }
+
+    monkeypatch.setattr(
+        "aider.models.OpenClawModelManager.get_model_info",
+        lambda self, model: stub_info if model == "@speed" else {},
+    )
+
+    model = Model("@speed")
+
+    assert model.info["max_input_tokens"] == 204800
 
 
 def test_openclaw_manager_parses_cli_output_with_plugin_noise(monkeypatch, tmp_path):

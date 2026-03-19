@@ -8,6 +8,7 @@ from prompt_toolkit.document import Document
 from rich.text import Text
 
 from aider.dump import dump  # noqa: F401
+from aider.gui.dashboard import LiveDashboard
 from aider.io import AutoCompleter, ConfirmGroup, InputOutput
 from aider.mdstream import MarkdownStream
 from aider.utils import ChdirTemporaryDirectory
@@ -124,6 +125,14 @@ class TestInputOutput(unittest.TestCase):
             self.assertTrue(io.is_dumb_terminal)
             self.assertFalse(io.pretty)
             self.assertIsNone(io.prompt_session)
+
+    def test_live_dashboard_updates_renderables(self):
+        dashboard = LiveDashboard()
+
+        dashboard.on_cost_update(1.25, 25.0)
+
+        self.assertEqual(dashboard.total_cost, 1.25)
+        self.assertEqual(dashboard.budget_percentage, 25.0)
 
     def test_autocompleter_get_command_completions(self):
         # Step 3: Mock the commands object

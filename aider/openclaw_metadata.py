@@ -17,6 +17,36 @@ DEFAULT_OPENCLAW_CONTEXT = 200000
 
 
 BUILTIN_OPENCLAW_METADATA = {
+    "@speed": {
+        "max_input_tokens": 204800,
+        "max_tokens": 204800,
+        "max_output_tokens": 204800,
+        "input_cost_per_token": 0.0,
+        "output_cost_per_token": 0.0,
+        "litellm_provider": "openclaw",
+        "openclaw_metadata_source": "builtin",
+        "openclaw_resolved_model": "zai/glm-4.5-air",
+    },
+    "@intel": {
+        "max_input_tokens": 204800,
+        "max_tokens": 204800,
+        "max_output_tokens": 204800,
+        "input_cost_per_token": 0.0,
+        "output_cost_per_token": 0.0,
+        "litellm_provider": "openclaw",
+        "openclaw_metadata_source": "builtin",
+        "openclaw_resolved_model": "zai/glm-4.5-air",
+    },
+    "@uncen": {
+        "max_input_tokens": 204800,
+        "max_tokens": 204800,
+        "max_output_tokens": 204800,
+        "input_cost_per_token": 0.0,
+        "output_cost_per_token": 0.0,
+        "litellm_provider": "openclaw",
+        "openclaw_metadata_source": "builtin",
+        "openclaw_resolved_model": "zai/glm-4.5-air",
+    },
     "openclaw": {
         "max_input_tokens": 204800,
         "max_tokens": 204800,
@@ -130,7 +160,7 @@ class OpenClawModelManager:
         self._cache_loaded = False
 
     def get_model_info(self, model):
-        if not self._is_openclaw_name(model):
+        if not self.supports_model(model):
             return {}
 
         token = self._extract_token(model)
@@ -143,9 +173,13 @@ class OpenClawModelManager:
 
         return self._get_builtin_info(model, token)
 
+    def supports_model(self, model):
+        return self._is_openclaw_name(model)
+
     def _is_openclaw_name(self, model):
         return (
             model == "openclaw"
+            or model.startswith("@")
             or model.startswith("openclaw:")
             or model.startswith("openclaw-")
         )
@@ -153,6 +187,8 @@ class OpenClawModelManager:
     def _extract_token(self, model):
         if model == "openclaw":
             return "chat"
+        if model.startswith("@"):
+            return model[1:].strip().lower()
         if model.startswith("openclaw:"):
             return model.split(":", 1)[1].strip().lower() or "chat"
         if model.startswith("openclaw-"):

@@ -246,7 +246,7 @@ class ModelInfoManager:
         return dict()
 
     def get_model_info(self, model):
-        if model.startswith("openclaw"):
+        if self.openclaw_manager.supports_model(model):
             openclaw_info = self.openclaw_manager.get_model_info(model)
             if openclaw_info:
                 return openclaw_info

@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, Optional
 from rich.console import Console, RenderableType
 from rich.live import Live
 from rich.layout import Layout
@@ -83,7 +83,7 @@ class LiveDashboard(TerminalUIObserver):
         # Pipeline
         pipeline_table = Table(box=None, expand=True)
         pipeline_table.add_column("Phase", ratio=1)
-        pipeline_table.add_column("Status", size=10)
+        pipeline_table.add_column("Status", width=10)
 
         for phase in self.phases:
             status = self.phase_results.get(phase, "pending")
