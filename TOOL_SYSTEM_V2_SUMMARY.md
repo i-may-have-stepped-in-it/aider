@@ -323,6 +323,22 @@ aider --edit-format tool-v2
 
 ---
 
+## Configuration
+
+Tools v2 can be configured via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AIDER_MAX_TOOL_CALLS` | 50 | Maximum number of tool calls per session |
+| `AIDER_MAX_TOOL_COST` | 5.0 | Maximum cost in dollars for tool execution |
+| `AIDER_TOOL_SANDBOX` | auto | Sandbox type: auto, firejail, unshare, minimal |
+| `AIDER_CIRCUIT_BREAKER_THRESHOLD` | 3 | Failures before circuit breaker opens |
+| `AIDER_COST_SAFETY_MARGIN` | 0.25 | Budget buffer percentage (25% = 0.25) |
+| `AIDER_DISABLE_BACKGROUND_SEMANTIC_INDEX` | - | Set to disable background semantic indexing |
+| `AIDER_CACHE_KEEPALIVE_DELAY` | - | Delay for cache keepalive in seconds |
+
+---
+
 ## Migration from v1
 
 | v1 | v2 |
