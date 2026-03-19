@@ -996,7 +996,11 @@ class Model(ModelSettings):
 
     def _use_openclaw_model(self):
         """Determine if we should use OpenClawModel for this request."""
-        is_openclaw_model = self.name == "openclaw" or self.name.startswith("openclaw:")
+        is_openclaw_model = (
+            self.name == "openclaw"
+            or self.name.startswith("openclaw:")
+            or self.name.startswith("@")
+        )
 
         # Check explicit override
         mode = os.environ.get("AIDER_OPENCLAW_MODE", "auto").lower()
