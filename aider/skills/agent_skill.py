@@ -19,6 +19,12 @@ class AgentSkillMixin:
     def __init__(self):
         self._agent_registry = None
         self._agent_executor = None
+        self._agent_owner = None
+
+    def _runtime_agent_service(self, context: SkillContext):
+        """Get the current runtime-owned agent service from context, if available."""
+        runtime = getattr(getattr(context, "coder", None), "runtime", None)
+        return getattr(runtime, "agent_service", None)
 
     def init_agents(self, context: SkillContext) -> bool:
         """
@@ -33,14 +39,39 @@ class AgentSkillMixin:
         if not context.enable_agents or not context.coder:
             return False
 
+        agent_service = self._runtime_agent_service(context)
+        if agent_service:
+            self._agent_registry = agent_service.registry
+            self._agent_executor = agent_service.executor
+            self._agent_owner = agent_service
+            return True
+
         # Lazy imports
         from ..agents.executor import AgentExecutor
         from ..agents.registry import AgentRegistry
 
         self._agent_registry = AgentRegistry(max_concurrent=context.max_agents)
         self._agent_executor = AgentExecutor(self._agent_registry)
+        self._agent_owner = self._agent_registry
 
         return True
+
+    def _ensure_agent_runtime(self):
+        """Refresh cached agent runtime objects when the active coder/runtime changes."""
+        context = getattr(self, "context", None)
+        agent_service = self._runtime_agent_service(context) if context else None
+
+        if agent_service is not None:
+            if self._agent_owner is not agent_service:
+                self._agent_registry = agent_service.registry
+                self._agent_executor = agent_service.executor
+                self._agent_owner = agent_service
+            return
+
+        if self._agent_owner is not None and self._agent_owner is not self._agent_registry:
+            self._agent_registry = None
+            self._agent_executor = None
+            self._agent_owner = None
 
     async def spawn_agent(
         self,
@@ -65,6 +96,8 @@ class AgentSkillMixin:
         Returns:
             Agent ID
         """
+        if not self._agent_executor:
+            self._ensure_agent_runtime()
         if not self._agent_executor:
             raise RuntimeError("Agents not initialized. Call init_agents() first.")
 
@@ -93,6 +126,8 @@ class AgentSkillMixin:
         Returns:
             List of agent IDs
         """
+        if not self._agent_executor:
+            self._ensure_agent_runtime()
         if not self._agent_executor:
             raise RuntimeError("Agents not initialized. Call init_agents() first.")
 
@@ -127,6 +162,8 @@ class AgentSkillMixin:
         Returns:
             Agent result dictionary
         """
+        if not self._agent_registry:
+            self._ensure_agent_runtime()
         if not self._agent_registry:
             raise RuntimeError("Agents not initialized. Call init_agents() first.")
 
@@ -175,6 +212,8 @@ class AgentSkillMixin:
         Returns:
             List of agent result dictionaries
         """
+        if not self._agent_registry:
+            self._ensure_agent_runtime()
         if not self._agent_registry:
             raise RuntimeError("Agents not initialized. Call init_agents() first.")
 

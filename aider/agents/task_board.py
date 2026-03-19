@@ -7,13 +7,13 @@ when multiple agents compete for the same tasks.
 Location: ~/.aider/tasks/{team}/
 """
 
-import os
 import json
-import time
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field, asdict
 import logging
+import os
+import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Task:
     """Represents a task in the task board."""
+
     id: str
     title: str
     description: str
@@ -37,7 +38,7 @@ class Task:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Task':
+    def from_dict(cls, data: Dict[str, Any]) -> "Task":
         """Create from dictionary."""
         return cls(**data)
 
@@ -94,18 +95,14 @@ class FileLockedTaskBoard:
             try:
                 fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 # Write lock info
-                lock_info = {
-                    "task_id": task_id,
-                    "locked_at": time.time(),
-                    "locked_by": os.getpid()
-                }
+                lock_info = {"task_id": task_id, "locked_at": time.time(), "locked_by": os.getpid()}
                 os.write(fd, json.dumps(lock_info).encode())
                 os.close(fd)
                 return True
             except FileExistsError:
                 # Lock file exists, check if it's stale
                 try:
-                    with open(lock_file, 'r') as f:
+                    with open(lock_file, "r") as f:
                         lock_info = json.load(f)
 
                     # If lock is older than 60 seconds, consider it stale
@@ -130,7 +127,7 @@ class FileLockedTaskBoard:
     def _load_tasks(self) -> Dict[str, Task]:
         """Load tasks from file."""
         try:
-            with open(self.tasks_file, 'r') as f:
+            with open(self.tasks_file, "r") as f:
                 data = json.load(f)
             return {task_id: Task.from_dict(task_data) for task_id, task_data in data.items()}
         except (FileNotFoundError, json.JSONDecodeError):
@@ -139,7 +136,7 @@ class FileLockedTaskBoard:
     def _save_tasks(self, tasks: Dict[str, Task]):
         """Save tasks to file."""
         data = {task_id: task.to_dict() for task_id, task in tasks.items()}
-        with open(self.tasks_file, 'w') as f:
+        with open(self.tasks_file, "w") as f:
             json.dump(data, f, indent=2)
 
     def create_task(
@@ -148,7 +145,7 @@ class FileLockedTaskBoard:
         title: str,
         description: str,
         dependencies: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> Task:
         """
         Create a new task.
@@ -173,7 +170,7 @@ class FileLockedTaskBoard:
             title=title,
             description=description,
             dependencies=dependencies or [],
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
         tasks[task_id] = task
@@ -331,10 +328,7 @@ class FileLockedTaskBoard:
             Dictionary mapping task IDs to their dependencies
         """
         tasks = self._load_tasks()
-        return {
-            task_id: task.dependencies
-            for task_id, task in tasks.items()
-        }
+        return {task_id: task.dependencies for task_id, task in tasks.items()}
 
     def get_execution_order(self) -> List[List[str]]:
         """
@@ -404,13 +398,7 @@ class FileLockedTaskBoard:
         """Get task statistics."""
         tasks = self._load_tasks()
 
-        stats = {
-            "total": len(tasks),
-            "pending": 0,
-            "in_progress": 0,
-            "completed": 0,
-            "failed": 0
-        }
+        stats = {"total": len(tasks), "pending": 0, "in_progress": 0, "completed": 0, "failed": 0}
 
         for task in tasks.values():
             stats[task.status] += 1
@@ -439,7 +427,7 @@ class TaskBoardIntegration:
                 title=task_data["title"],
                 description=task_data["description"],
                 dependencies=task_data.get("dependencies", []),
-                metadata={"plan": plan}
+                metadata={"plan": plan},
             )
 
     def claim_for_agent(self, agent_name: str) -> Optional[Task]:
@@ -472,24 +460,15 @@ if __name__ == "__main__":
 
     # Create tasks
     board.create_task(
-        "task-1",
-        "Setup Database",
-        "Create database schema and migrations",
-        dependencies=[]
+        "task-1", "Setup Database", "Create database schema and migrations", dependencies=[]
     )
 
     board.create_task(
-        "task-2",
-        "Create API",
-        "Implement REST API endpoints",
-        dependencies=["task-1"]
+        "task-2", "Create API", "Implement REST API endpoints", dependencies=["task-1"]
     )
 
     board.create_task(
-        "task-3",
-        "Build Frontend",
-        "Create React components",
-        dependencies=["task-2"]
+        "task-3", "Build Frontend", "Create React components", dependencies=["task-2"]
     )
 
     # Get execution order

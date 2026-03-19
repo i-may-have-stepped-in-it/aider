@@ -1,6 +1,5 @@
 import unittest
 
-
 from aider.agents.governor import MissionGovernor
 from aider.context import ProjectContext
 

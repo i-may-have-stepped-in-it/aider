@@ -4,44 +4,17 @@ Agent commands for Aider (/agent spawn, /agent list, etc.)
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import logging
 from typing import TYPE_CHECKING, Optional
+
+from aider.async_utils import run_async_safely
 
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
 
-
-def _run_async_safely(coro, timeout=30.0):
-    """
-    Safely run an async coroutine from synchronous code.
-
-    Handles both cases:
-    - No event loop running: uses asyncio.run()
-    - Event loop already running: uses ThreadPoolExecutor with new event loop
-    """
-    try:
-        # Check if we're already in an event loop
-        asyncio.get_running_loop()
-
-        # Already in async context - run in separate thread with new loop
-        def run_in_new_loop():
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                return new_loop.run_until_complete(coro)
-            finally:
-                new_loop.close()
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(run_in_new_loop)
-            return future.result(timeout=timeout)
-    except RuntimeError:
-        # No event loop running - safe to use asyncio.run
-        return asyncio.run(coro)
+_run_async_safely = run_async_safely
 
 
 class AgentCommands:
@@ -61,7 +34,20 @@ class AgentCommands:
         self.commands = commands
         self.io = commands.io
         self._registry = None
+        self._registry_owner = None
         self._executor = None
+        self._executor_owner = None
+
+    def _show_usage(self, error=None):
+        if hasattr(self.commands, "show_command_usage"):
+            self.commands.show_command_usage("agent", error=error)
+        elif error:
+            self.io.tool_error(error)
+
+    def _show_subcommand_usage(self, usage, error=None):
+        if error:
+            self.io.tool_error(error)
+        self.io.tool_output(f"Usage: {usage}")
 
     @property
     def coder(self):
@@ -71,25 +57,50 @@ class AgentCommands:
     @property
     def registry(self):
         """Get the agent registry from the coder."""
+        runtime = getattr(self.coder, "runtime", None) if self.coder else None
+        if runtime and getattr(runtime, "agent_service", None):
+            owner = runtime.agent_service.registry
+        elif self.coder and hasattr(self.coder, "agent_registry") and self.coder.agent_registry:
+            owner = self.coder.agent_registry
+        else:
+            owner = None
+
+        if self._registry is not None and self._registry_owner is not owner:
+            self._registry = None
+            self._registry_owner = None
+
         if self._registry is None:
-            if self.coder and hasattr(self.coder, "agent_registry") and self.coder.agent_registry:
-                self._registry = self.coder.agent_registry
+            if owner is not None:
+                self._registry = owner
             else:
                 # Lazy initialization
-                from .registry import AgentRegistry
+                from .service import AgentService
 
-                self._registry = AgentRegistry()
+                service = AgentService(io=self.io)
+                self._registry = service.registry
                 if self.coder:
                     self.coder.agent_registry = self._registry
+            self._registry_owner = self._registry
         return self._registry
 
     @property
     def executor(self):
         """Get the agent executor."""
-        if self._executor is None:
-            from .executor import AgentExecutor
+        runtime = getattr(self.coder, "runtime", None) if self.coder else None
+        owner = getattr(getattr(runtime, "agent_service", None), "executor", None)
 
-            self._executor = AgentExecutor(self.registry, self.io)
+        if self._executor is not None and self._executor_owner is not owner:
+            self._executor = None
+            self._executor_owner = None
+
+        if self._executor is None:
+            if owner is not None:
+                self._executor = owner
+            else:
+                from .executor import AgentExecutor
+
+                self._executor = AgentExecutor(self.registry, self.io)
+            self._executor_owner = self._executor
         return self._executor
 
     def cmd_agent(self, args: str) -> Optional[str]:
@@ -112,7 +123,8 @@ class AgentCommands:
         /agent wait abc123
         """
         if not args.strip():
-            return self.cmd_agent.__doc__
+            self._show_usage()
+            return None
 
         parts = args.strip().split(maxsplit=1)
         subcmd = parts[0] if parts else ""
@@ -122,15 +134,22 @@ class AgentCommands:
         if handler:
             return handler(subargs)
         else:
-            self.io.tool_error(f"Unknown agent subcommand: {subcmd}")
-            return self.cmd_agent.__doc__
+            self._show_usage(f"Unknown agent subcommand: {subcmd}")
+            return None
 
     def _handle_spawn(self, args: str) -> str:
         """Handle /agent spawn"""
         import shlex
 
         # Parse arguments
-        parser_args = shlex.split(args) if args else []
+        try:
+            parser_args = shlex.split(args) if args else []
+        except ValueError as err:
+            self._show_subcommand_usage(
+                "/agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]",
+                f"Unable to parse /agent spawn arguments: {err}",
+            )
+            return None
 
         task = ""
         model = None
@@ -141,24 +160,58 @@ class AgentCommands:
         i = 0
         while i < len(parser_args):
             arg = parser_args[i]
-            if arg == "--model" and i + 1 < len(parser_args):
+            if arg == "--model":
+                if i + 1 >= len(parser_args):
+                    self._show_subcommand_usage(
+                        "/agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]",
+                        "Option --model requires a value.",
+                    )
+                    return None
                 model = parser_args[i + 1]
                 i += 2
-            elif arg == "--files" and i + 1 < len(parser_args):
+            elif arg == "--files":
+                if i + 1 >= len(parser_args):
+                    self._show_subcommand_usage(
+                        "/agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]",
+                        "Option --files requires a value.",
+                    )
+                    return None
                 files = parser_args[i + 1].split(",")
                 i += 2
-            elif arg == "--readonly" and i + 1 < len(parser_args):
+            elif arg == "--readonly":
+                if i + 1 >= len(parser_args):
+                    self._show_subcommand_usage(
+                        "/agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]",
+                        "Option --readonly requires a value.",
+                    )
+                    return None
                 readonly_files = parser_args[i + 1].split(",")
                 i += 2
-            elif arg == "--name" and i + 1 < len(parser_args):
+            elif arg == "--name":
+                if i + 1 >= len(parser_args):
+                    self._show_subcommand_usage(
+                        "/agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]",
+                        "Option --name requires a value.",
+                    )
+                    return None
                 name = parser_args[i + 1]
                 i += 2
+            elif arg.startswith("--"):
+                self._show_subcommand_usage(
+                    "/agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]",
+                    f"Unknown /agent spawn option: {arg}",
+                )
+                return None
             else:
                 task = " ".join(parser_args[i:])
                 break
 
         if not task:
-            return "Error: Task required. Usage: /agent spawn <task> [--model MODEL]"
+            self._show_subcommand_usage(
+                "/agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]",
+                "Task required.",
+            )
+            return None
 
         # Spawn agent
         async def do_spawn():
@@ -189,9 +242,16 @@ class AgentCommands:
         """Handle /agent list"""
         status_filter = None
         if "--status" in args:
-            parts = args.split("--status")
+            parts = args.split("--status", 1)
             if len(parts) > 1:
-                status_str = parts[1].strip().split()[0].upper()
+                remainder = parts[1].strip()
+                if not remainder:
+                    self._show_subcommand_usage(
+                        "/agent list [--status pending|running|completed|error|cancelled]",
+                        "Option --status requires a value.",
+                    )
+                    return None
+                status_str = remainder.split()[0].upper()
                 from .agent import AgentStatus
 
                 try:
@@ -225,7 +285,8 @@ class AgentCommands:
         """Handle /agent status"""
         agent_id = args.strip()
         if not agent_id:
-            return "Error: Agent ID required"
+            self._show_subcommand_usage("/agent status <id>", "Agent ID required.")
+            return None
 
         async def do_status():
             return await self.registry.get(agent_id)
@@ -259,7 +320,8 @@ class AgentCommands:
         """Handle /agent result"""
         parts = args.strip().split()
         if not parts:
-            return "Error: Agent ID required"
+            self._show_subcommand_usage("/agent result <id> [--wait]", "Agent ID required.")
+            return None
 
         agent_id = parts[0]
         should_wait = "--wait" in args
@@ -303,7 +365,8 @@ class AgentCommands:
         """Handle /agent wait"""
         agent_id = args.strip()
         if not agent_id:
-            return "Error: Agent ID required"
+            self._show_subcommand_usage("/agent wait <id>", "Agent ID required.")
+            return None
 
         self.io.tool_output(f"Waiting for agent {agent_id}...")
 
@@ -321,7 +384,8 @@ class AgentCommands:
         """Handle /agent cancel"""
         agent_id = args.strip()
         if not agent_id:
-            return "Error: Agent ID required"
+            self._show_subcommand_usage("/agent cancel <id>", "Agent ID required.")
+            return None
 
         async def do_cancel():
             return await self.registry.cancel(agent_id)

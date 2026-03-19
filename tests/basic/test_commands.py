@@ -6,6 +6,7 @@ import sys
 import tempfile
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import TestCase, mock
 
 import git
@@ -109,6 +110,22 @@ class TestCommands(TestCase):
                 " cur_messages"
             )
             mock_tool_output.assert_any_call(expected_preview)
+
+    def test_get_hooks_manager_prefers_coder_bound_hooks_manager(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        hooks = mock.Mock()
+        commands = Commands(io, SimpleNamespace(hooks_manager=hooks))
+
+        with mock.patch("aider.commands.get_hooks_manager", side_effect=AssertionError):
+            self.assertIs(commands._get_hooks_manager(), hooks)
+
+    def test_skills_registry_prefers_coder_bound_registry(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        registry = mock.Mock()
+        commands = Commands(io, SimpleNamespace(skills_registry=registry))
+
+        with mock.patch("aider.skills.registry.get_registry", side_effect=AssertionError):
+            self.assertIs(commands.skills_registry, registry)
         io = InputOutput(pretty=False, fancy_input=False, yes=True)
         coder = Coder.create(self.GPT35, None, io)
         commands = Commands(io, coder)
@@ -118,11 +135,304 @@ class TestCommands(TestCase):
             {"role": "user", "content": "User message"},
         ]
 
+    def test_run_supports_help_alias(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with mock.patch.object(commands, "cmd_help") as mock_help:
+            commands.run("/?")
+
+        mock_help.assert_called_once_with("")
+
+    def test_run_invalid_command_suggests_match(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.run("/hep")
+
+        mock_tool_error.assert_called_once_with("Invalid command: /hep")
+        suggestion_lines = [call.args[0] for call in mock_tool_output.call_args_list]
+        self.assertTrue(
+            any(line.startswith("Did you mean: ") and "/help" in line for line in suggestion_lines)
+        )
+        mock_tool_output.assert_any_call("Use /help to see available commands.")
+
+    def test_get_help_md_includes_aliases(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        help_md = commands.get_help_md()
+
+        self.assertIn("|Command|Aliases|Description|", help_md)
+        self.assertIn("| **/help** | **/?** |", help_md)
+        self.assertIn("| **/search-web** | **/search** |", help_md)
+
+    def test_command_metadata_is_cached(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with mock.patch.object(
+            commands, "_build_command_metadata", wraps=commands._build_command_metadata
+        ) as mock_build:
+            first = commands.get_command_metadata()
+            second = commands.get_command_metadata()
+
+        self.assertIs(first, second)
+        mock_build.assert_called_once()
+
+    def test_cmd_add_reports_malformed_quoted_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with mock.patch.object(io, "tool_error") as mock_tool_error:
+            commands.cmd_add('"unterminated')
+
+        mock_tool_error.assert_called_once()
+        self.assertIn("Unable to parse /add arguments", mock_tool_error.call_args[0][0])
+
+    def test_cmd_git_reports_malformed_quoted_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with mock.patch.object(io, "tool_error") as mock_tool_error:
+            commands.cmd_git('"unterminated')
+
+        mock_tool_error.assert_called_once()
+        self.assertIn("Unable to parse /git arguments", mock_tool_error.call_args[0][0])
+
+    def test_usage_shown_for_missing_add_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_add("")
+
+        mock_tool_error.assert_called_once_with("Please provide one or more files to add.")
+        mock_tool_output.assert_any_call("Usage: /add <file|glob> [more files...]")
+
+    def test_usage_shown_for_missing_git_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_git("")
+
+        mock_tool_error.assert_called_once_with("Please provide a git command to run.")
+        mock_tool_output.assert_any_call("Usage: /git <git args...>")
+
+    def test_usage_shown_for_missing_web_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_web("")
+
+        mock_tool_error.assert_called_once_with("Please provide a URL to scrape.")
+        mock_tool_output.assert_any_call("Usage: /web <url>")
+
         # Mock io.tool_error
         with mock.patch.object(io, "tool_error") as mock_tool_error:
             commands.cmd_copy("")
             # Assert tool_error was called indicating no assistant messages
             mock_tool_error.assert_called_once_with("No assistant messages found to copy.")
+
+    def test_usage_shown_for_missing_skill_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with mock.patch.object(io, "tool_output") as mock_tool_output:
+            commands.cmd_skill("")
+
+        rendered = [call.args[0] for call in mock_tool_output.call_args_list]
+        self.assertIn(
+            "Usage: /skill list | /skill run <skill> [...] | /skill info <skill>", rendered
+        )
+
+    def test_skill_helper_is_cached_but_follows_runtime_registry(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        from aider.skills.registry import SkillRegistry
+
+        registry_one = SkillRegistry(load_dynamic=False)
+        registry_two = SkillRegistry(load_dynamic=False)
+        commands.coder.runtime.skill_registry = registry_one
+
+        skill_command_one = commands._get_skill_command()
+        skill_command_two = commands._get_skill_command()
+
+        self.assertIs(skill_command_one, skill_command_two)
+        self.assertIs(skill_command_one.registry, registry_one)
+
+        commands.coder.runtime.skill_registry = registry_two
+        self.assertIs(skill_command_one.registry, registry_two)
+
+    def test_usage_shown_for_unknown_agent_subcommand(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_agent("bogus")
+
+        mock_tool_error.assert_called_once_with("Unknown agent subcommand: bogus")
+        mock_tool_output.assert_any_call("Usage: /agent <subcommand> [...]")
+
+    def test_usage_shown_for_unknown_a2a_subcommand(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_a2a("bogus")
+
+        mock_tool_error.assert_called_once_with("Unknown a2a subcommand: bogus")
+        mock_tool_output.assert_any_call("Usage: /a2a <subcommand> [...]")
+
+    def test_cmd_skill_reports_malformed_quoted_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_skill('run "unterminated')
+
+        mock_tool_error.assert_called_once()
+        self.assertIn("Unable to parse /skill arguments", mock_tool_error.call_args[0][0])
+        mock_tool_output.assert_any_call(
+            "Usage: /skill list | /skill run <skill> [...] | /skill info <skill>"
+        )
+
+    def test_cmd_agent_reports_malformed_quoted_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_agent('spawn "unterminated')
+
+        mock_tool_error.assert_called_once()
+        self.assertIn("Unable to parse /agent spawn arguments", mock_tool_error.call_args[0][0])
+        mock_tool_output.assert_any_call(
+            "Usage: /agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]"
+        )
+
+    def test_cmd_a2a_reports_malformed_quoted_args(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_a2a('send "unterminated')
+
+        mock_tool_error.assert_called_once()
+        self.assertIn("Unable to parse /a2a send arguments", mock_tool_error.call_args[0][0])
+        mock_tool_output.assert_any_call("Usage: /a2a send <agent-id> <message>")
+
+    def test_cmd_agent_spawn_requires_option_values(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_agent("spawn --model")
+
+        mock_tool_error.assert_called_once_with("Option --model requires a value.")
+        mock_tool_output.assert_any_call(
+            "Usage: /agent spawn <task> [--model MODEL] [--files FILES] [--readonly FILES]"
+        )
+
+    def test_cmd_agent_list_requires_status_value(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_agent("list --status")
+
+        mock_tool_error.assert_called_once_with("Option --status requires a value.")
+        mock_tool_output.assert_any_call(
+            "Usage: /agent list [--status pending|running|completed|error|cancelled]"
+        )
+
+    def test_cmd_a2a_request_validates_param_format(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_a2a("request abc123 review_code --param nope")
+
+        mock_tool_error.assert_called_once_with(
+            "Invalid --param value: 'nope'. Expected key=value."
+        )
+        mock_tool_output.assert_any_call(
+            "Usage: /a2a request <agent-id> <capability> [--param key=value ...]"
+        )
+
+    def test_cmd_a2a_request_rejects_unknown_options(self):
+        io = InputOutput(pretty=False, fancy_input=False, yes=True)
+        coder = Coder.create(self.GPT35, None, io)
+        commands = Commands(io, coder)
+
+        with (
+            mock.patch.object(io, "tool_error") as mock_tool_error,
+            mock.patch.object(io, "tool_output") as mock_tool_output,
+        ):
+            commands.cmd_a2a("request abc123 review_code --bogus")
+
+        mock_tool_error.assert_called_once_with("Unknown /a2a request option: --bogus")
+        mock_tool_output.assert_any_call(
+            "Usage: /a2a request <agent-id> <capability> [--param key=value ...]"
+        )
 
     def test_cmd_copy_pyperclip_exception(self):
         io = InputOutput(pretty=False, fancy_input=False, yes=True)
@@ -953,6 +1263,15 @@ class TestCommands(TestCase):
                                     found_image = True
                                     break
             self.assertTrue(found_image, "Image file not found in messages to LLM")
+
+    def test_model_info_isolated_per_instance(self):
+        model_a = Model("gpt-3.5-turbo")
+        model_b = Model("gpt-3.5-turbo")
+
+        self.assertIsNot(model_a.info, model_b.info)
+
+        model_a.info["supports_vision"] = True
+        self.assertIsNone(model_b.info.get("supports_vision"))
 
     def test_cmd_read_only_with_glob_pattern(self):
         with GitTemporaryDirectory() as repo_dir:

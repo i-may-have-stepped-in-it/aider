@@ -570,6 +570,18 @@ def get_parser(default_config_files, git_root):
         help="Run tests, fix problems found and then exit",
         default=False,
     )
+    group.add_argument(
+        "--review",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable/disable interactive review of changes (default: False)",
+    )
+    group.add_argument(
+        "--auto-review",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable/disable automatic acceptance of reviewed changes (default: False)",
+    )
 
     ##########
     group = parser.add_argument_group("Analytics")

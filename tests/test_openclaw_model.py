@@ -7,13 +7,13 @@ import unittest
 from unittest.mock import Mock, patch
 
 # Ensure aider is importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from aider.openclaw_model import (
     OpenClawConfig,
     OpenClawModel,
-    is_openclaw_endpoint,
     create_model,
+    is_openclaw_endpoint,
 )
 
 
@@ -117,7 +117,7 @@ class TestOpenClawModel(unittest.TestCase):
 
     def test_init_with_defaults(self):
         """Test model initialization with default config."""
-        with patch('aider.openclaw_model.requests'):
+        with patch("aider.openclaw_model.requests"):
             model = OpenClawModel("openclaw:chat")
             self.assertEqual(model.name, "openclaw:chat")
             self.assertEqual(model.config.agent_id, "chat")
@@ -126,7 +126,7 @@ class TestOpenClawModel(unittest.TestCase):
 
     def test_parse_model_name(self):
         """Test parsing agent_id from model name."""
-        with patch('aider.openclaw_model.requests'):
+        with patch("aider.openclaw_model.requests"):
             # Standard format
             model = OpenClawModel("openclaw:chat")
             self.assertEqual(model.config.agent_id, "chat")
@@ -141,7 +141,7 @@ class TestOpenClawModel(unittest.TestCase):
 
     def test_resolve_mode(self):
         """Test mode resolution logic."""
-        with patch('aider.openclaw_model.requests'):
+        with patch("aider.openclaw_model.requests"):
             # Auto mode now defaults to "http" (responses API returns 404)
             model = OpenClawModel("test")
             model.config.mode = "auto"
@@ -167,7 +167,7 @@ class TestOpenClawModel(unittest.TestCase):
 
     def test_get_headers(self):
         """Test header generation."""
-        with patch('aider.openclaw_model.requests'):
+        with patch("aider.openclaw_model.requests"):
             config = OpenClawConfig()
             config.api_key = "test-key"
             config.agent_id = "test-agent"
@@ -183,7 +183,7 @@ class TestOpenClawModel(unittest.TestCase):
 
     def test_get_headers_without_optional(self):
         """Test headers without optional fields."""
-        with patch('aider.openclaw_model.requests'):
+        with patch("aider.openclaw_model.requests"):
             config = OpenClawConfig()
             config.api_key = None
             config.session_key = None
@@ -196,14 +196,14 @@ class TestOpenClawModel(unittest.TestCase):
             self.assertNotIn("Authorization", headers)
             self.assertNotIn("X-OpenClaw-Session-Key", headers)
 
-    @patch('aider.openclaw_model.requests.post')
+    @patch("aider.openclaw_model.requests.post")
     def test_send_openresponses(self, mock_post):
         """Test OpenResponses API request."""
         # Mock response
         mock_response = Mock()
         mock_response.json.return_value = {
             "output": "Test response",
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
         }
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
@@ -223,14 +223,14 @@ class TestOpenClawModel(unittest.TestCase):
         # Verify response parsing - response is now SimpleNamespace (object-style access)
         self.assertEqual(response.choices[0].message.content, "Test response")
 
-    @patch('aider.openclaw_model.requests.post')
+    @patch("aider.openclaw_model.requests.post")
     def test_send_http_api(self, mock_post):
         """Test HTTP API request."""
         # Mock response
         mock_response = Mock()
         mock_response.json.return_value = {
             "choices": [{"message": {"content": "Test"}, "finish_reason": "stop"}],
-            "usage": {}
+            "usage": {},
         }
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
@@ -270,8 +270,8 @@ class TestModelIntegration(unittest.TestCase):
 class TestCreateModel(unittest.TestCase):
     """Test factory function."""
 
-    @patch('aider.openclaw_model.OpenClawModel')
-    @patch('aider.openclaw_model.is_openclaw_endpoint')
+    @patch("aider.openclaw_model.OpenClawModel")
+    @patch("aider.openclaw_model.is_openclaw_endpoint")
     def test_create_openclaw_model_auto(self, mock_is_oc, mock_ocm):
         """Test auto-detection of OpenClaw."""
         mock_is_oc.return_value = True
@@ -280,14 +280,14 @@ class TestCreateModel(unittest.TestCase):
 
         mock_ocm.assert_called_once()
 
-    @patch('aider.openclaw_model.OpenClawModel')
+    @patch("aider.openclaw_model.OpenClawModel")
     def test_create_openclaw_model_forced(self, mock_ocm):
         """Test forcing OpenClawModel."""
         create_model("openai/gpt-4", use_openclaw=True)
 
         mock_ocm.assert_called_once()
 
-    @patch('aider.models.Model')
+    @patch("aider.models.Model")
     def test_create_standard_model_forced(self, mock_model):
         """Test forcing standard Model."""
         create_model("openclaw:chat", use_openclaw=False)

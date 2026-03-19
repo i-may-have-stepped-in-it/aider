@@ -86,6 +86,9 @@ class WholeFileFunctionCoder(Coder):
 
         return res
 
+    def get_final_assistant_output(self):
+        return self.render_incremental_response(final=True)
+
     def live_diffs(self, fname, content, final):
         lines = content.splitlines(keepends=True)
 

@@ -13,24 +13,12 @@ logger = logging.getLogger(__name__)
 
 def patch_coder_class():
     """
-    Monkey-patch the Coder class to add agent registry support.
+    Compatibility shim retained for older integration code.
 
-    This is a temporary measure until the changes are merged upstream.
+    The core Commands class now exposes /agent directly and agent registries
+    are attached explicitly or lazily, so no Coder mutation is needed here.
     """
-    from aider.coders.base_coder import Coder
-
-    # Store original __init__
-    original_init = Coder.__init__
-
-    def new_init(self, *args, **kwargs):
-        original_init(self, *args, **kwargs)
-        # Add agent registry
-        from .registry import AgentRegistry
-
-        self.agent_registry: Optional[AgentRegistry] = None
-
-    Coder.__init__ = new_init
-    logger.debug("Patched Coder class with agent_registry attribute")
+    logger.debug("patch_coder_class() is now a no-op compatibility shim")
 
 
 def install_in_commands(commands_module=None):
@@ -43,29 +31,30 @@ def install_in_commands(commands_module=None):
     if commands_module is None:
         from aider import commands as commands_module
 
+    if hasattr(commands_module.Commands, "cmd_agent"):
+        logger.debug("Commands already exposes cmd_agent; install_in_commands is a no-op")
+        return commands_module.Commands
+
     from .commands import AgentCommands
 
-    # Store reference to original Commands class
     original_commands_cls = commands_module.Commands
 
     class CommandsWithAgents(original_commands_cls):
-        """Extended Commands class with agent support."""
+        """Compatibility wrapper for older command installations."""
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self._agent_commands = AgentCommands(self)
 
         def cmd_agent(self, args: str):
-            """Manage sub-agents for parallel task execution."""
             return self._agent_commands.cmd_agent(args)
 
         def completions_agent(self, document, complete_event):
-            """Tab completion for /agent command."""
             return self._agent_commands.completions_agent(document, complete_event)
 
-    # Replace Commands class
     commands_module.Commands = CommandsWithAgents
-    logger.info("Installed agent commands into aider.commands")
+    logger.info("Installed compatibility agent commands into aider.commands")
+    return commands_module.Commands
 
 
 def initialize_agents(coder, max_concurrent: int = 5):
@@ -76,6 +65,17 @@ def initialize_agents(coder, max_concurrent: int = 5):
         coder: The Coder instance to initialize
         max_concurrent: Maximum concurrent agents
     """
+    runtime = getattr(coder, "runtime", None)
+    if runtime and hasattr(runtime, "configure_agents"):
+        agent_service = runtime.configure_agents(max_concurrent=max_concurrent)
+        coder.agent_service = agent_service
+        coder.agent_registry = runtime.agent_registry
+        coder.a2a_bus = runtime.a2a_bus
+        logger.info(
+            "Initialized agent service for coder runtime (max_concurrent=%s)", max_concurrent
+        )
+        return
+
     from .registry import AgentRegistry
 
     if not hasattr(coder, "agent_registry") or coder.agent_registry is None:
@@ -128,10 +128,3 @@ def setup_from_args(coder, args):
         max_concurrent = getattr(args, "max_agents", 5)
         initialize_agents(coder, max_concurrent=max_concurrent)
         logger.info(f"Agents enabled with max_concurrent={max_concurrent}")
-
-
-# Auto-patch on import
-try:
-    patch_coder_class()
-except Exception as e:
-    logger.warning(f"Failed to patch Coder class: {e}")

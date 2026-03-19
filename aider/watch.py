@@ -162,13 +162,23 @@ class FileWatcher:
                         f"python -m py_compile {fname} 2>&1" if fname.endswith(".py") else None
                     )
                     if lint_cmd:
-                        self.coder.autonomous_agent.run_task(
-                            (
-                                f"The file {rel_fname} was just modified. "
-                                "Please ensure it has no syntax errors."
-                            ),
-                            test_command=lint_cmd,
+                        runtime = getattr(self.coder, "runtime", None)
+                        agent_service = getattr(runtime, "agent_service", None)
+                        instruction = (
+                            f"The file {rel_fname} was just modified. "
+                            "Please ensure it has no syntax errors."
                         )
+                        if agent_service:
+                            agent_service.run_autonomous_task(
+                                self.coder,
+                                instruction,
+                                test_command=lint_cmd,
+                            )
+                        else:
+                            self.coder.run_autonomous_task(
+                                instruction,
+                                test_command=lint_cmd,
+                            )
 
         self.io.interrupt_input()
         return True

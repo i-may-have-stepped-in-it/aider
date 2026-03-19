@@ -13,13 +13,13 @@ Configuration via environment variables:
 - AIDER_OPENCLAW_SESSION_KEY=... (optional, for session continuity)
 """
 
-import json
 import hashlib
+import json
 import logging
 import os
 import sys
-from types import SimpleNamespace
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 # Try to import requests, provide helpful error if missing
 try:
@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OpenClawConfig:
     """Configuration for OpenClaw connection."""
+
     api_base = "http://127.0.0.1:18789"
     api_key = None
     agent_id = "chat"
@@ -88,8 +89,7 @@ class OpenClawModel:
         """
         if requests is None:
             raise ImportError(
-                "OpenClawModel requires 'requests' package. "
-                "Install with: pip install requests"
+                "OpenClawModel requires 'requests' package. Install with: pip install requests"
             )
 
         self.name = name
@@ -137,6 +137,7 @@ class OpenClawModel:
         """Check if the OpenResponses API is available."""
         try:
             import requests
+
             url = "{}/responses".format(self.config.api_base.replace("/v1", ""))
             response = requests.options(url, timeout=5)
             return response.status_code != 404
@@ -230,7 +231,9 @@ class OpenClawModel:
         if stream:
             return hash_object, self._stream_openresponses(response)
         else:
-            return hash_object, self._dict_to_namespace(self._parse_openresponses_response(response.json()))
+            return hash_object, self._dict_to_namespace(
+                self._parse_openresponses_response(response.json())
+            )
 
     def _send_http_api(self, messages, functions, stream, temperature, hash_object):
         """Send request using OpenAI-compatible HTTP API."""
@@ -299,7 +302,10 @@ class OpenClawModel:
                 if isinstance(value, dict):
                     d[key] = self._dict_to_namespace(value)
                 elif isinstance(value, list):
-                    d[key] = [self._dict_to_namespace(item) if isinstance(item, dict) else item for item in value]
+                    d[key] = [
+                        self._dict_to_namespace(item) if isinstance(item, dict) else item
+                        for item in value
+                    ]
             return SimpleNamespace(**d)
         return d
 
@@ -328,13 +334,15 @@ class OpenClawModel:
         if "output" in data:
             # Simple text output
             return {
-                "choices": [{
-                    "message": {
-                        "role": "assistant",
-                        "content": data["output"],
-                    },
-                    "finish_reason": "stop",
-                }],
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": data["output"],
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
                 "usage": data.get("usage", {}),
             }
         elif "messages" in data:
@@ -343,10 +351,12 @@ class OpenClawModel:
             if messages:
                 last_msg = messages[-1]
                 return {
-                    "choices": [{
-                        "message": last_msg,
-                        "finish_reason": "stop",
-                    }],
+                    "choices": [
+                        {
+                            "message": last_msg,
+                            "finish_reason": "stop",
+                        }
+                    ],
                     "usage": data.get("usage", {}),
                 }
 
@@ -389,7 +399,7 @@ class OpenClawModel:
                 last_error = e
                 logger.warning("Attempt {} failed: {}".format(attempt + 1, e))
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    time.sleep(2**attempt)  # Exponential backoff
 
         raise last_error or RuntimeError("All retries failed")
 
@@ -446,6 +456,7 @@ def create_model(name, use_openclaw=None, **kwargs):
 
     # Fall back to standard Model class
     from aider.models import Model
+
     return Model(name, **kwargs)
 
 

@@ -2,44 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import logging
 from typing import TYPE_CHECKING, Optional
+
+from aider.async_utils import run_async_safely
 
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
 
-
-def _run_async_safely(coro, timeout=30.0):
-    """
-    Safely run an async coroutine from synchronous code.
-
-    Handles both cases:
-    - No event loop running: uses asyncio.run()
-    - Event loop already running: uses ThreadPoolExecutor with new event loop
-    """
-    try:
-        # Check if we're already in an event loop
-        asyncio.get_running_loop()
-
-        # Already in async context - run in separate thread with new loop
-        def run_in_new_loop():
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                return new_loop.run_until_complete(coro)
-            finally:
-                new_loop.close()
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(run_in_new_loop)
-            return future.result(timeout=timeout)
-    except RuntimeError:
-        # No event loop running - safe to use asyncio.run
-        return asyncio.run(coro)
+_run_async_safely = run_async_safely
 
 
 class A2ACommands:
@@ -57,22 +30,53 @@ class A2ACommands:
 
     def __init__(self, commands):
         self.commands = commands
-        self.coder = commands.coder
         self.io = commands.io
         self._registry = None
+        self._registry_owner = None
+
+    def _show_usage(self, error=None):
+        if hasattr(self.commands, "show_command_usage"):
+            self.commands.show_command_usage("a2a", error=error)
+        elif error:
+            self.io.tool_error(error)
+
+    def _show_subcommand_usage(self, usage, error=None):
+        if error:
+            self.io.tool_error(error)
+        self.io.tool_output(f"Usage: {usage}")
+
+    @property
+    def coder(self):
+        """Get the coder from commands dynamically."""
+        return self.commands.coder
 
     @property
     def registry(self):
         """Get the agent registry from the coder."""
+        runtime = getattr(self.coder, "runtime", None) if self.coder else None
+        if runtime and getattr(runtime, "agent_service", None):
+            owner = runtime.agent_service.registry
+        elif self.coder and hasattr(self.coder, "agent_registry"):
+            owner = self.coder.agent_registry
+        else:
+            owner = None
+
+        if self._registry is not None and self._registry_owner is not owner:
+            self._registry = None
+            self._registry_owner = None
+
         if self._registry is None:
-            if hasattr(self.coder, "agent_registry"):
-                self._registry = self.coder.agent_registry
+            if owner is not None:
+                self._registry = owner
             else:
                 # Lazy initialization
-                from ..agents.registry import AgentRegistry
+                from ..agents.service import AgentService
 
-                self._registry = AgentRegistry()
-                self.coder.agent_registry = self._registry
+                service = AgentService(io=self.io)
+                self._registry = service.registry
+                if self.coder:
+                    self.coder.agent_registry = self._registry
+            self._registry_owner = self._registry
         return self._registry
 
     def cmd_a2a(self, args: str) -> Optional[str]:
@@ -96,7 +100,8 @@ class A2ACommands:
         /a2a history abc123
         """
         if not args.strip():
-            return self.cmd_a2a.__doc__
+            self._show_usage()
+            return None
 
         parts = args.strip().split(maxsplit=1)
         subcmd = parts[0] if parts else ""
@@ -106,16 +111,24 @@ class A2ACommands:
         if handler:
             return handler(subargs)
         else:
-            self.io.tool_error(f"Unknown a2a subcommand: {subcmd}")
-            return self.cmd_a2a.__doc__
+            self._show_usage(f"Unknown a2a subcommand: {subcmd}")
+            return None
 
     def _handle_send(self, args: str) -> str:
         """Handle /a2a send"""
         import shlex
 
-        parts = shlex.split(args) if args else []
+        try:
+            parts = shlex.split(args) if args else []
+        except ValueError as err:
+            self._show_subcommand_usage(
+                "/a2a send <agent-id> <message>",
+                f"Unable to parse /a2a send arguments: {err}",
+            )
+            return None
         if len(parts) < 2:
-            return "Error: Usage: /a2a send <agent-id> <message>"
+            self._show_subcommand_usage("/a2a send <agent-id> <message>", "Message required.")
+            return None
 
         agent_id = parts[0]
         message = " ".join(parts[1:])
@@ -151,9 +164,20 @@ class A2ACommands:
         """Handle /a2a request"""
         import shlex
 
-        parts = shlex.split(args) if args else []
+        try:
+            parts = shlex.split(args) if args else []
+        except ValueError as err:
+            self._show_subcommand_usage(
+                "/a2a request <agent-id> <capability> [--param key=value ...]",
+                f"Unable to parse /a2a request arguments: {err}",
+            )
+            return None
         if len(parts) < 2:
-            return "Error: Usage: /a2a request <agent-id> <capability> [--param key=value ...]"
+            self._show_subcommand_usage(
+                "/a2a request <agent-id> <capability> [--param key=value ...]",
+                "Agent ID and capability required.",
+            )
+            return None
 
         agent_id = parts[0]
         capability = parts[1]
@@ -164,12 +188,33 @@ class A2ACommands:
         while i < len(parts):
             if parts[i] == "--param" and i + 1 < len(parts):
                 param_str = parts[i + 1]
-                if "=" in param_str:
-                    key, value = param_str.split("=", 1)
-                    params[key] = value
+                if "=" not in param_str:
+                    self._show_subcommand_usage(
+                        "/a2a request <agent-id> <capability> [--param key=value ...]",
+                        f"Invalid --param value: {param_str!r}. Expected key=value.",
+                    )
+                    return None
+                key, value = param_str.split("=", 1)
+                params[key] = value
                 i += 2
+            elif parts[i] == "--param":
+                self._show_subcommand_usage(
+                    "/a2a request <agent-id> <capability> [--param key=value ...]",
+                    "Option --param requires a value.",
+                )
+                return None
+            elif parts[i].startswith("--"):
+                self._show_subcommand_usage(
+                    "/a2a request <agent-id> <capability> [--param key=value ...]",
+                    f"Unknown /a2a request option: {parts[i]}",
+                )
+                return None
             else:
-                i += 1
+                self._show_subcommand_usage(
+                    "/a2a request <agent-id> <capability> [--param key=value ...]",
+                    f"Unexpected argument: {parts[i]!r}",
+                )
+                return None
 
         async def do_request():
             # Get the agent from registry
@@ -199,7 +244,8 @@ class A2ACommands:
     def _handle_broadcast(self, args: str) -> str:
         """Handle /a2a broadcast"""
         if not args.strip():
-            return "Error: Message required"
+            self._show_subcommand_usage("/a2a broadcast <message>", "Message required.")
+            return None
 
         message = args.strip()
 
@@ -231,9 +277,19 @@ class A2ACommands:
         """Handle /a2a delegate"""
         import shlex
 
-        parts = shlex.split(args) if args else []
+        try:
+            parts = shlex.split(args) if args else []
+        except ValueError as err:
+            self._show_subcommand_usage(
+                "/a2a delegate <agent-id> <task>",
+                f"Unable to parse /a2a delegate arguments: {err}",
+            )
+            return None
         if len(parts) < 2:
-            return "Error: Usage: /a2a delegate <agent-id> <task>"
+            self._show_subcommand_usage(
+                "/a2a delegate <agent-id> <task>", "Agent ID and task required."
+            )
+            return None
 
         agent_id = parts[0]
         task = " ".join(parts[1:])
@@ -332,13 +388,13 @@ def install_a2a_commands(commands):
 
     Call this from aider/commands.py or during Coder initialization.
     """
-    a2a_cmds = A2ACommands(commands)
+    if hasattr(commands, "cmd_a2a"):
+        logger.debug("Commands already exposes cmd_a2a; install_a2a_commands is a no-op")
+        return commands
 
-    # Add cmd_a2a method to Commands class
+    a2a_cmds = A2ACommands(commands)
     commands.cmd_a2a = a2a_cmds.cmd_a2a
     commands.completions_a2a = a2a_cmds.completions_a2a
-
-    # Store references for access
     commands._a2a_commands = a2a_cmds
-
-    logger.info("A2A commands installed")
+    logger.info("Installed compatibility A2A commands")
+    return commands

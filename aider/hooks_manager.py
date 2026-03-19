@@ -28,12 +28,14 @@ class HookPoint(Enum):
     PRE_EDIT = auto()  # Before editing files
     PRE_COMMAND = auto()  # Before executing a command
     PRE_MESSAGE = auto()  # Before sending message to LLM
+    PRE_SUMMARIZE = auto()  # Before summarizing chat history
 
     # Post-operation hooks
     POST_COMMIT = auto()  # After committing changes
     POST_EDIT = auto()  # After editing files
     POST_COMMAND = auto()  # After executing a command
     POST_MESSAGE = auto()  # After receiving LLM response
+    POST_SUMMARIZE = auto()  # After summarizing chat history
 
     # Lifecycle hooks
     SESSION_START = auto()  # When Aider session starts
@@ -44,6 +46,13 @@ class HookPoint(Enum):
     # Error hooks
     ON_ERROR = auto()  # When an error occurs
     ON_VALIDATION_FAIL = auto()  # When validation fails
+
+    # UI Hooks (Event-Driven UX)
+    UI_PHASE_UPDATE = auto()  # Autonomous phase change (Librarian, Architect, etc.)
+    UI_COST_UPDATE = auto()  # Real-time cost change
+    UI_AGENT_HEARTBEAT = auto()  # Sub-agent status update
+    UI_TOOL_PROGRESS = auto()  # Granular tool progress update
+    UI_POLICY_CHECK = auto()  # Security policy scan result
 
 
 @dataclass
@@ -57,6 +66,9 @@ class HookConfig:
     condition: Optional[str] = None  # Optional condition expression
     retry_count: int = 0  # Number of retries on failure
     retry_delay: float = 1.0  # Delay between retries
+    name: Optional[str] = None  # Hook name for identification
+    stop_on_failure: bool = False  # Stop execution if this hook fails
+    depends_on: Optional[list] = None  # List of hook names this depends on
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "HookConfig":
@@ -96,7 +108,12 @@ class HooksManager:
     Handles registration, configuration, and execution of hooks from skills.
     """
 
-    def __init__(self, bridge: Optional[OpenClawBridge] = None):
+    def __init__(
+        self,
+        bridge: Optional[OpenClawBridge] = None,
+        io=None,
+        verbose: bool = False,
+    ):
         """
         Initialize the hooks manager.
 
@@ -104,12 +121,83 @@ class HooksManager:
             bridge: Optional OpenClawBridge instance.
         """
         self.bridge = bridge or OpenClawBridge()
+        self.io = io
+        self.verbose = verbose
         self._hooks: Dict[HookPoint, List[Hook]] = {hp: [] for hp in HookPoint}
         self._skill_hooks: Dict[str, Set[str]] = {}  # skill_name -> hook_names
         self._execution_history: collections.deque = collections.deque(maxlen=500)
         self._enabled = True
+        self.loaded_modules: List[str] = []
+        self.skills_enabled = False
+        self.skills_path: Optional[str] = None
 
         logger.debug("HooksManager initialized")
+
+    def log(self, message: str, error: bool = False):
+        """Log a message if verbose mode is enabled."""
+        if self.verbose and self.io:
+            if error:
+                self.io.tool_error(f"[hooks] {message}")
+            else:
+                self.io.tool_output(f"[hooks] {message}")
+
+    def _hook_point_from_name(self, hook_name: str) -> HookPoint:
+        """Map legacy hook names to HookPoint values."""
+        hook_map = {
+            "pre_command": HookPoint.PRE_COMMAND,
+            "post_command": HookPoint.POST_COMMAND,
+            "pre_edit": HookPoint.PRE_EDIT,
+            "post_edit": HookPoint.POST_EDIT,
+            "on_init": HookPoint.SESSION_START,
+            "on_exit": HookPoint.SESSION_END,
+            "pre_send": HookPoint.PRE_MESSAGE,
+            "post_send": HookPoint.POST_MESSAGE,
+            "pre_summarize": HookPoint.PRE_SUMMARIZE,
+            "post_summarize": HookPoint.POST_SUMMARIZE,
+        }
+        return hook_map[hook_name]
+
+    def register(self, hook_name: str, callback: Callable) -> bool:
+        """Legacy registration API used by hook files."""
+        try:
+            hook_point = self._hook_point_from_name(hook_name)
+        except KeyError:
+            self.log(f"Unknown hook: {hook_name}", error=True)
+            return False
+
+        try:
+            self.register_hook(
+                name=(
+                    f"{hook_name}:{getattr(callback, '__module__', 'unknown')}:"
+                    f"{getattr(callback, '__qualname__', getattr(callback, '__name__', 'callback'))}:"
+                    f"{id(callback)}"
+                ),
+                hook_point=hook_point,
+                callback=callback,
+                config=HookConfig(name=hook_name),
+            )
+        except ValueError as err:
+            self.log(str(err), error=True)
+            return False
+
+        self.log(f"Registered callback for {hook_name}")
+        return True
+
+    def unregister(self, hook_name: str, callback: Callable) -> bool:
+        """Legacy unregister API used by hook files."""
+        try:
+            hook_point = self._hook_point_from_name(hook_name)
+        except KeyError:
+            return False
+
+        hooks = self._hooks.get(hook_point, [])
+        for index, hook in enumerate(hooks):
+            if hook.callback == callback:
+                hooks.pop(index)
+                self.log(f"Unregistered callback from {hook_name}")
+                return True
+
+        return False
 
     def register_hook(
         self,
@@ -165,6 +253,55 @@ class HooksManager:
 
         logger.debug(f"Registered hook '{name}' at {hook_point.name}")
         return hook
+
+    def register_ui_observer(self, observer: Any) -> None:
+        """
+        Register a TerminalUIObserver to handle UI-specific events.
+
+        Args:
+            observer: Object implementing TerminalUIObserver interface.
+        """
+        from .hooks_manager import HookConfig
+
+        # 1. Phase Updates
+        if hasattr(observer, "on_phase_change"):
+            self.register_hook(
+                name=f"ui:phase:{id(observer)}",
+                hook_point=HookPoint.UI_PHASE_UPDATE,
+                callback=observer.on_phase_change,
+            )
+
+        # 2. Cost Updates
+        if hasattr(observer, "on_cost_update"):
+            self.register_hook(
+                name=f"ui:cost:{id(observer)}",
+                hook_point=HookPoint.UI_COST_UPDATE,
+                callback=observer.on_cost_update,
+            )
+
+        # 3. Agent Updates
+        if hasattr(observer, "on_agent_status"):
+            self.register_hook(
+                name=f"ui:agent:{id(observer)}",
+                hook_point=HookPoint.UI_AGENT_HEARTBEAT,
+                callback=observer.on_agent_status,
+            )
+
+        # 4. Tool Progress
+        if hasattr(observer, "on_tool_progress"):
+            self.register_hook(
+                name=f"ui:tool:{id(observer)}",
+                hook_point=HookPoint.UI_TOOL_PROGRESS,
+                callback=observer.on_tool_progress,
+            )
+
+        # 5. Policy Checks
+        if hasattr(observer, "on_policy_check"):
+            self.register_hook(
+                name=f"ui:policy:{id(observer)}",
+                hook_point=HookPoint.UI_POLICY_CHECK,
+                callback=observer.on_policy_check,
+            )
 
     def unregister_hook(self, name: str) -> bool:
         """
@@ -237,10 +374,17 @@ class HooksManager:
         context = context or {}
         results = []
         hooks = self._hooks.get(hook_point, [])
+        executed_hooks = set()  # Track executed hook names for dependencies
 
         for hook in hooks:
             if not hook.config.enabled:
                 continue
+
+            # Check dependencies
+            if hook.config.depends_on:
+                deps_satisfied = all(dep in executed_hooks for dep in hook.config.depends_on)
+                if not deps_satisfied:
+                    continue
 
             # Check condition
             if hook.config.condition and not self._evaluate_condition(
@@ -251,10 +395,94 @@ class HooksManager:
             result = self._execute_hook(hook, context)
             results.append(result)
 
-            if not result.get("success") and stop_on_error:
-                break
+            # Track executed hook by name
+            if hook.config.name:
+                executed_hooks.add(hook.config.name)
+
+            # Check stop conditions
+            if not result.get("success"):
+                if stop_on_error or hook.config.stop_on_failure:
+                    break
 
         return results
+
+    def execute(self, hook_name: str, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Compatibility wrapper matching the legacy hooks API.
+
+        Returns:
+            Aggregated result dictionary compatible with aider/hooks.py.
+        """
+        results = {
+            "hook_name": hook_name,
+            "executed": False,
+            "callbacks": [],
+            "errors": [],
+            "data": {},
+        }
+
+        try:
+            hook_point = self._hook_point_from_name(hook_name)
+        except KeyError:
+            if self.verbose and self.io:
+                self.io.tool_error(f"[hooks] Unknown hook: {hook_name}")
+            return results
+
+        context = kwargs.copy()
+        if args:
+            context["args"] = args
+
+        hook_results = self.execute_hooks(hook_point, context)
+        if not hook_results:
+            return results
+
+        results["executed"] = True
+        for result in hook_results:
+            results["callbacks"].append(result)
+            if result.get("success"):
+                callback_result = result.get("result")
+                if isinstance(callback_result, dict):
+                    results["data"].update(callback_result)
+            else:
+                results["errors"].append(
+                    {
+                        "error": result.get("error"),
+                        "hook_name": result.get("hook_name"),
+                    }
+                )
+
+        return results
+
+    def load_hooks_from_file(self, file_path: str) -> bool:
+        """Compatibility wrapper for legacy hook loading."""
+        from .hooks_bootstrap import load_hooks_from_file
+
+        return load_hooks_from_file(self, file_path)
+
+    def load_hooks_from_directory(self, dir_path: str) -> int:
+        """Compatibility wrapper for legacy hook directory loading."""
+        from .hooks_bootstrap import load_hooks_from_directory
+
+        return load_hooks_from_directory(self, dir_path)
+
+    def load_skills(self, skills_path: str) -> bool:
+        """Compatibility wrapper for legacy hook-style skill loading."""
+        from .hooks_bootstrap import load_skills
+
+        return load_skills(self, skills_path)
+
+    def get_loaded_modules(self) -> List[str]:
+        """Return list of loaded legacy hook module paths."""
+        return self.loaded_modules.copy()
+
+    def is_hook_enabled(self, hook_name: str) -> bool:
+        """Legacy hook availability check."""
+        try:
+            hook_point = self._hook_point_from_name(hook_name)
+        except KeyError:
+            return False
+
+        return bool(self._hooks.get(hook_point))
 
     def _execute_hook(
         self,
@@ -347,8 +575,6 @@ class HooksManager:
             ast.Tuple,
             ast.Dict,
             ast.Subscript,
-            ast.Attribute,
-            ast.Call,
             ast.IfExp,
         )
 
@@ -363,16 +589,11 @@ class HooksManager:
 
             # Create restricted namespace with context
             namespace = {
+                "__builtins__": {},
                 "context": context,
-                "len": len,
-                "any": any,
-                "all": all,
-                "str": str,
-                "int": int,
-                "bool": bool,
             }
 
-            result = eval(compile(tree, "<condition>", "eval"), namespace)
+            result = eval(compile(tree, "<condition>", "eval"), namespace, {})
             return bool(result)
 
         except Exception as e:
@@ -588,27 +809,29 @@ def hookable(
     return decorator
 
 
-# Singleton instance
-_hooks_manager_instance: Optional[HooksManager] = None
-
-
 def get_hooks_manager(bridge: Optional[OpenClawBridge] = None) -> HooksManager:
-    """
-    Get or create the singleton HooksManager instance.
+    """Compatibility export for the hook bootstrap singleton."""
+    from .hooks_bootstrap import get_hooks_manager
 
-    Args:
-        bridge: Optional OpenClawBridge instance.
+    return get_hooks_manager(bridge)
 
-    Returns:
-        HooksManager instance.
-    """
-    global _hooks_manager_instance
-    if _hooks_manager_instance is None:
-        _hooks_manager_instance = HooksManager(bridge)
-    return _hooks_manager_instance
+
+def set_hooks_manager(manager: Optional[HooksManager]):
+    """Compatibility export for the hook bootstrap singleton."""
+    from .hooks_bootstrap import set_hooks_manager
+
+    return set_hooks_manager(manager)
+
+
+def create_hooks_manager(io=None, verbose: bool = False, bridge: Optional[OpenClawBridge] = None):
+    """Compatibility export for the hook bootstrap singleton."""
+    from .hooks_bootstrap import create_hooks_manager
+
+    return create_hooks_manager(io=io, verbose=verbose, bridge=bridge)
 
 
 def reset_hooks_manager():
-    """Reset the singleton instance (useful for testing)."""
-    global _hooks_manager_instance
-    _hooks_manager_instance = None
+    """Compatibility export for the hook bootstrap singleton."""
+    from .hooks_bootstrap import reset_hooks_manager
+
+    return reset_hooks_manager()

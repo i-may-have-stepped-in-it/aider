@@ -5,11 +5,15 @@ Extends Aider's /skill command with agent-enabled skills.
 """
 
 import argparse
+import inspect
+import logging
 import shlex
 from typing import List, Tuple
 
 from .base import SkillContext, _run_async_safely
 from .registry import get_registry
+
+logger = logging.getLogger(__name__)
 
 
 class SkillsCommand:
@@ -19,12 +23,54 @@ class SkillsCommand:
     Provides commands for running skills that can spawn sub-agents.
     """
 
-    def __init__(self, io, coder=None, verbose: bool = False):
+    def __init__(self, io, coder=None, commands=None, verbose: bool = False):
         self.io = io
         self.coder = coder
+        self.commands = commands
         self.verbose = verbose
-        self.registry = get_registry()
+        self._registry = None
+        self._registry_owner = None
+        self._registry_override = False
         self.parser = self._create_parser()
+
+    def _show_usage(self, error=None):
+        if self.commands and hasattr(self.commands, "show_command_usage"):
+            self.commands.show_command_usage("skill", error=error)
+            return
+        if error:
+            self.io.tool_error(error)
+        self.io.tool_output("Usage: /skill list | /skill run <skill> [...] | /skill info <skill>")
+
+    @property
+    def registry(self):
+        """Resolve the active skill registry dynamically from the current coder/runtime."""
+        if self._registry_override:
+            return self._registry
+
+        runtime = getattr(self.coder, "runtime", None) if self.coder else None
+        owner = getattr(runtime, "skill_registry", None)
+        if owner is None and self.commands is not None:
+            owner = getattr(self.commands, "skills_registry", None)
+        if owner is None and self.coder is not None:
+            owner = getattr(self.coder, "skills_registry", None)
+        if owner is None:
+            owner = get_registry()
+
+        if self._registry is not None and self._registry_owner is not owner:
+            self._registry = None
+
+        if self._registry is None:
+            self._registry = owner
+            self._registry_owner = owner
+
+        return self._registry
+
+    @registry.setter
+    def registry(self, value):
+        """Allow direct registry injection for tests and compatibility paths."""
+        self._registry = value
+        self._registry_owner = value
+        self._registry_override = True
 
     def _create_parser(self) -> argparse.ArgumentParser:
         """Create argument parser for skill commands."""
@@ -59,7 +105,6 @@ class SkillsCommand:
         run_parser.add_argument(
             "--timeout", type=float, default=300.0, help="Agent timeout in seconds"
         )
-
         # info
         info_parser = subparsers.add_parser("info", help="Show skill info")
         info_parser.add_argument("skill", help="Skill name")
@@ -73,13 +118,19 @@ class SkillsCommand:
     def cmd_skill(self, args_str: str) -> None:
         """Execute the /skill command."""
         if not args_str.strip():
+            self._show_usage()
             self._show_help()
             return
 
         try:
             args_list = shlex.split(args_str)
-            args = self.parser.parse_args(args_list)
+            args, unknown = self.parser.parse_known_args(args_list)
+            args.params = unknown
+        except ValueError as err:
+            self._show_usage(f"Unable to parse /skill arguments: {err}")
+            return
         except SystemExit:
+            self._show_usage("Invalid /skill arguments.")
             return
 
         # Dispatch
@@ -108,6 +159,7 @@ class SkillsCommand:
         self.io.tool_output("  /skill list --agents")
         self.io.tool_output("  /skill run code-review -f auth.py models.py --agents")
         self.io.tool_output("  /skill run test-generation -f *.py --agents --max-agents 8")
+        self.io.tool_output('  /skill run skill-creator name=my-linter description="Run eslint"')
 
     def _cmd_list(self, args) -> None:
         """Handle list command."""
@@ -146,13 +198,13 @@ class SkillsCommand:
     async def _cmd_run(self, args) -> None:
         """Handle run command."""
         skill_name = args.skill
-
-        # Check if skill exists
-        skill_class = self.registry.get(skill_name)
-        if not skill_class:
-            self.io.tool_error(f"Skill '{skill_name}' not found.")
-            self.io.tool_output("Use '/skill list' to see available skills.")
+        try:
+            skill_params = self._parse_skill_params(args.params)
+        except ValueError as err:
+            self.io.tool_error(str(err))
+            self.io.tool_output(f"Use '/skill info {skill_name}' to see supported parameters.")
             return
+        metadata = self.registry.get_metadata(skill_name)
 
         # Create context
         context = SkillContext(
@@ -164,8 +216,19 @@ class SkillsCommand:
             agent_timeout=args.timeout,
         )
 
-        # Create skill instance
-        skill = skill_class(context)
+        # Check if skill exists
+        skill = self.registry.create(skill_name, context)
+        if not skill or not metadata:
+            self.io.tool_error(f"Skill '{skill_name}' not found.")
+            self.io.tool_output("Use '/skill list' to see available skills.")
+            return
+
+        validation_errors = self._validate_skill_params(metadata, skill_params)
+        if validation_errors:
+            for error in validation_errors:
+                self.io.tool_error(error)
+            self.io.tool_output(f"Use '/skill info {skill_name}' to see supported parameters.")
+            return
 
         self.io.tool_output(f"\n▶ Running skill: {skill_name}")
         if args.enable_agents:
@@ -175,10 +238,13 @@ class SkillsCommand:
 
         # Run the skill
         try:
-            result = await skill.execute(
+            result = skill.execute(
                 files=args.files or [],
                 model=args.model,
+                **skill_params,
             )
+            if inspect.isawaitable(result):
+                result = await result
         except Exception as e:
             self.io.tool_error(f"Skill execution failed: {e}")
             if self.verbose:
@@ -190,26 +256,113 @@ class SkillsCommand:
         # Display result
         self._display_result(result)
 
+    def _parse_skill_params(self, params: List[str]) -> dict:
+        """Parse trailing skill arguments of the form key=value."""
+        parsed = {}
+        for param in params:
+            if "=" not in param:
+                raise ValueError(f"Invalid skill parameter: {param!r}. Expected key=value.")
+            key, value = param.split("=", 1)
+            key = key.strip()
+            if not key:
+                raise ValueError("Invalid skill parameter: empty key.")
+            parsed[key] = self._coerce_param_value(value.strip())
+        return parsed
+
+    def _validate_skill_params(self, metadata: dict, provided: dict) -> List[str]:
+        """Validate provided key=value params against declared skill parameters."""
+        params = metadata.get("parameters") or {}
+        if not params:
+            return []
+
+        errors = []
+        unknown = sorted(set(provided) - set(params))
+        if unknown:
+            errors.append(f"Unknown skill parameters: {', '.join(unknown)}")
+
+        for name, spec in params.items():
+            if name in provided:
+                if spec.get("enum") and provided[name] not in spec["enum"]:
+                    errors.append(
+                        f"Invalid value for '{name}': {provided[name]!r}. "
+                        f"Allowed: {', '.join(map(str, spec['enum']))}"
+                    )
+                continue
+            if "default" not in spec:
+                errors.append(f"Missing required skill parameter: {name}")
+
+        return errors
+
+    def _coerce_param_value(self, value: str):
+        """Coerce CLI string values into simple Python scalars/lists."""
+        lower = value.lower()
+        if lower == "true":
+            return True
+        if lower == "false":
+            return False
+        if lower == "null" or lower == "none":
+            return None
+
+        if value.startswith("[") and value.endswith("]"):
+            inner = value[1:-1].strip()
+            if not inner:
+                return []
+            return [self._coerce_param_value(item.strip()) for item in inner.split(",")]
+
+        try:
+            if "." in value:
+                return float(value)
+            return int(value)
+        except ValueError:
+            return value
+
     def _cmd_info(self, args) -> None:
         """Handle info command."""
-        skill_class = self.registry.get(args.skill)
-        if not skill_class:
+        metadata = self.registry.get_metadata(args.skill)
+        if not metadata:
             self.io.tool_error(f"Skill '{args.skill}' not found.")
             return
 
         self.io.tool_output(f"\n{args.skill}")
         self.io.tool_output("=" * 50)
-        self.io.tool_output(f"\n{skill_class.description}")
-        self.io.tool_output(f"\nVersion: {getattr(skill_class, 'version', '1.0.0')}")
+        self.io.tool_output(f"\n{metadata['description']}")
+        self.io.tool_output(f"\nVersion: {metadata['version']}")
+        self.io.tool_output(f"Source: {metadata['source']}")
+        if metadata.get("homepage"):
+            self.io.tool_output(f"Homepage: {metadata['homepage']}")
 
-        if skill_class.supports_agents:
+        if metadata["supports_agents"]:
             self.io.tool_output("\n🤖 Agent Support: Yes")
-            self.io.tool_output(f"   Max agents: {getattr(skill_class, 'max_agents', 5)}")
+            self.io.tool_output(f"   Max agents: {metadata['max_agents']}")
         else:
             self.io.tool_output("\n🤖 Agent Support: No")
 
+        requires = metadata.get("requires") or {}
+        if requires:
+            bins = requires.get("bins") or []
+            if bins:
+                self.io.tool_output("\nRequirements:")
+                self.io.tool_output(f"  Binaries: {', '.join(bins)}")
+
+        install = metadata.get("install") or []
+        if install:
+            self.io.tool_output("\nInstall Options:")
+            self.io.tool_output(f"  {len(install)} available")
+
+        parameters = metadata.get("parameters") or {}
+        if parameters:
+            self.io.tool_output("\nParameters:")
+            for name, spec in parameters.items():
+                required = "required" if "default" not in spec else f"default={spec['default']!r}"
+                desc = spec.get("description", "")
+                self.io.tool_output(f"  {name}: {required}")
+                if desc:
+                    self.io.tool_output(f"    {desc}")
+                if spec.get("enum"):
+                    self.io.tool_output(f"    Allowed: {', '.join(map(str, spec['enum']))}")
+
         self.io.tool_output("\nUsage:")
-        self.io.tool_output(f"  /skill run {args.skill} -f <files> [--agents]")
+        self.io.tool_output(f"  /skill run {args.skill} -f <files> [--agents] key=value ...")
 
     def _cmd_search(self, args) -> None:
         """Handle search command."""

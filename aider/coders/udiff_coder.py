@@ -129,6 +129,8 @@ def do_replace(fname, content, hunk):
         content = ""
 
     if content is None:
+        if not fname.exists() and after_text:
+            return after_text
         return
 
     # TODO: handle inserting into new file

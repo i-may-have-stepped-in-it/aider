@@ -5,11 +5,11 @@ This module provides multi-pane terminal support for viewing multiple agents sim
 Supports tmux on Linux and iTerm2 on Mac.
 """
 
+import logging
 import os
 import subprocess
 import time
-from typing import List, Dict, Optional
-import logging
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +41,7 @@ class SplitPaneManager:
     def _check_tmux(self) -> bool:
         """Check if tmux is available."""
         try:
-            result = subprocess.run(
-                ["tmux", "-V"],
-                capture_output=True,
-                text=True
-            )
+            result = subprocess.run(["tmux", "-V"], capture_output=True, text=True)
             return result.returncode == 0
         except FileNotFoundError:
             return False
@@ -58,11 +54,12 @@ class SplitPaneManager:
         try:
             result = subprocess.run(
                 [
-                    "osascript", "-e",
+                    "osascript",
+                    "-e",
                     'tell application "System Events" to get name of every application process',
                 ],
                 capture_output=True,
-                text=True
+                text=True,
             )
             return "iTerm2" in result.stdout
         except Exception:
@@ -111,28 +108,39 @@ class SplitPaneManager:
         try:
             # Create new session if first pane
             if not self.panes:
-                subprocess.run([
-                    "tmux", "new-session",
-                    "-d",
-                    "-s", self.session_name,
-                    "-n", agent_name,
-                    command
-                ], check=True)
+                subprocess.run(
+                    [
+                        "tmux",
+                        "new-session",
+                        "-d",
+                        "-s",
+                        self.session_name,
+                        "-n",
+                        agent_name,
+                        command,
+                    ],
+                    check=True,
+                )
                 logger.info(f"Created tmux session: {self.session_name}")
             else:
                 # Split window for additional panes
-                subprocess.run([
-                    "tmux", "split-window",
-                    "-t", self.session_name,
-                    "-h",  # Horizontal split
-                    command
-                ], check=True)
+                subprocess.run(
+                    [
+                        "tmux",
+                        "split-window",
+                        "-t",
+                        self.session_name,
+                        "-h",  # Horizontal split
+                        command,
+                    ],
+                    check=True,
+                )
                 logger.info(f"Created tmux pane for: {agent_name}")
 
             self.panes[agent_name] = {
                 "command": command,
                 "mode": "tmux",
-                "session": self.session_name
+                "session": self.session_name,
             }
 
             return True
@@ -154,7 +162,7 @@ class SplitPaneManager:
         """
         try:
             # AppleScript to create iTerm2 split
-            script = f'''
+            script = f"""
             tell application "iTerm2"
                 tell current window
                     create tab with default profile
@@ -163,17 +171,11 @@ class SplitPaneManager:
                     end tell
                 end tell
             end tell
-            '''
+            """
 
-            subprocess.run(
-                ["osascript", "-e", script],
-                check=True
-            )
+            subprocess.run(["osascript", "-e", script], check=True)
 
-            self.panes[agent_name] = {
-                "command": command,
-                "mode": "iterm2"
-            }
+            self.panes[agent_name] = {"command": command, "mode": "iterm2"}
 
             logger.info(f"Created iTerm2 pane for: {agent_name}")
             return True
@@ -210,12 +212,9 @@ class SplitPaneManager:
     def _send_to_tmux_pane(self, agent_name: str, text: str) -> bool:
         """Send text to a tmux pane."""
         try:
-            subprocess.run([
-                "tmux", "send-keys",
-                "-t", f"{self.session_name}",
-                text,
-                "Enter"
-            ], check=True)
+            subprocess.run(
+                ["tmux", "send-keys", "-t", f"{self.session_name}", text, "Enter"], check=True
+            )
 
             return True
         except subprocess.CalledProcessError as e:
@@ -225,7 +224,7 @@ class SplitPaneManager:
     def _send_to_iterm2_pane(self, agent_name: str, text: str) -> bool:
         """Send text to an iTerm2 pane."""
         try:
-            script = f'''
+            script = f"""
             tell application "iTerm2"
                 tell current window
                     tell current session
@@ -233,12 +232,9 @@ class SplitPaneManager:
                     end tell
                 end tell
             end tell
-            '''
+            """
 
-            subprocess.run(
-                ["osascript", "-e", script],
-                check=True
-            )
+            subprocess.run(["osascript", "-e", script], check=True)
 
             return True
         except subprocess.CalledProcessError as e:
@@ -267,10 +263,7 @@ class SplitPaneManager:
 
         if pane["mode"] == "tmux":
             try:
-                subprocess.run([
-                    "tmux", "select-pane",
-                    "-t", f"{self.session_name}"
-                ], check=True)
+                subprocess.run(["tmux", "select-pane", "-t", f"{self.session_name}"], check=True)
 
                 return True
             except subprocess.CalledProcessError as e:
@@ -296,10 +289,7 @@ class SplitPaneManager:
 
         if pane["mode"] == "tmux":
             try:
-                subprocess.run([
-                    "tmux", "kill-pane",
-                    "-t", f"{self.session_name}"
-                ], check=True)
+                subprocess.run(["tmux", "kill-pane", "-t", f"{self.session_name}"], check=True)
 
                 del self.panes[agent_name]
                 return True
@@ -313,10 +303,7 @@ class SplitPaneManager:
         """Close all panes and cleanup."""
         if self.display_mode == "tmux" and self.has_tmux:
             try:
-                subprocess.run([
-                    "tmux", "kill-session",
-                    "-t", self.session_name
-                ], check=True)
+                subprocess.run(["tmux", "kill-session", "-t", self.session_name], check=True)
                 logger.info(f"Closed tmux session: {self.session_name}")
             except subprocess.CalledProcessError:
                 pass
@@ -418,7 +405,7 @@ class AgentDisplayManager:
         return {
             "display_mode": self.display_mode,
             "panes": self.manager.list_panes(),
-            "instructions": self.manager.get_display_instructions()
+            "instructions": self.manager.get_display_instructions(),
         }
 
 

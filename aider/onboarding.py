@@ -15,6 +15,21 @@ from aider import urls
 from aider.io import InputOutput
 
 
+def is_openclaw_configured():
+    """
+    Determine if the current environment is configured to use OpenClaw by default.
+    """
+    mode = os.environ.get("AIDER_OPENCLAW_MODE", "auto").lower()
+    if mode == "disabled":
+        return False
+    if mode in ("responses", "http", "enabled"):
+        return True
+
+    api_base = os.environ.get("OPENAI_API_BASE", "")
+    indicators = ["127.0.0.1:18789", "localhost:18789", ":18789", "openclaw"]
+    return any(ind in api_base.lower() for ind in indicators)
+
+
 def check_openrouter_tier(api_key):
     """
     Checks if the user is on a free tier for OpenRouter.
@@ -49,16 +64,14 @@ def try_to_select_default_model():
     Returns:
         The name of the selected model, or None if no suitable default is found.
     """
-    # If OPENAI_API_BASE is set, it's a strong indicator of an OpenAI-compatible endpoint.
-    if os.environ.get("OPENAI_API_BASE"):
-        # Return openai/chat as default for generic OpenAI endpoints
-        return "openai/chat"
+    # OpenClaw is the highest-priority local/default runtime in this fork.
+    if is_openclaw_configured():
+        return "openclaw:chat"
 
     # Select model based on available API keys
     model_key_pairs = [
         ("ANTHROPIC_API_KEY", "sonnet"),
         ("DEEPSEEK_API_KEY", "deepseek"),
-        ("OPENAI_API_KEY", "gpt-4o"),
         ("GEMINI_API_KEY", "gemini/gemini-2.5-pro-exp-03-25"),
         ("VERTEXAI_PROJECT", "vertex_ai/gemini-2.5-pro-exp-03-25"),
     ]
@@ -68,7 +81,14 @@ def try_to_select_default_model():
         if api_key_value:
             return model_name
 
-    # Finally, fallback to OpenRouter
+    # Prefer generic OpenAI-compatible endpoints over OpenRouter in this fork.
+    if os.environ.get("OPENAI_API_BASE"):
+        return "openai/chat"
+
+    # Prefer direct OpenAI over OpenRouter if both are configured.
+    if os.environ.get("OPENAI_API_KEY"):
+        return "gpt-4o"
+
     openrouter_key = os.environ.get("OPENROUTER_API_KEY")
     if openrouter_key:
         # Check if the user is on a free tier
@@ -118,7 +138,7 @@ def offer_openrouter_oauth(io, analytics):
     return False
 
 
-def select_default_model(args, io, analytics):
+def select_default_model(args, io, analytics, model_explicit=False):
     """
     Selects a default model based on available API keys if no model is specified.
     Offers OAuth flow for OpenRouter if no keys are found.
@@ -132,6 +152,15 @@ def select_default_model(args, io, analytics):
         The name of the selected model, or None if no suitable default is found.
     """
     if args.model:
+        if args.model == "openai/chat" and not model_explicit:
+            auto_model = try_to_select_default_model()
+            if auto_model and auto_model != "openai/chat":
+                io.tool_warning(
+                    f"Overriding configured openai/chat with {auto_model} based on available API"
+                    " key."
+                )
+                analytics.event("auto_model_selection", model=auto_model)
+                return auto_model
         return args.model  # Model already specified
 
     model = try_to_select_default_model()

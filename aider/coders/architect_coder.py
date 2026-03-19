@@ -1,8 +1,12 @@
 import asyncio
 import logging
 import os
+from dataclasses import asdict
 from pathlib import Path
 
+from ..audit.manager import AuditManager
+from ..memory.vector_store import ProjectMemory
+from ..security.policy import PolicyEngine
 from .architect_prompts import ArchitectPrompts
 from .base_coder import Coder
 from .librarian_prompts import LibrarianPrompts
@@ -22,6 +26,9 @@ class ArchitectCoder(ToolEnabledCoderV2):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.policy_engine = PolicyEngine()
+        self.project_memory = ProjectMemory(root_dir=self.root)
+        self.audit_manager = AuditManager(root_dir=self.root)
         # Circuit breaker for recursive critique loops
         self._critique_count = 0
         self._critique_lock = asyncio.Lock()
@@ -114,11 +121,35 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 if last_error:
                     logger.error(f"A2A message failed after {max_retries} attempts: {last_error}")
 
+    def _trigger_ui_phase(self, phase: str, status: str = "running"):
+        """Notify UI of autonomous phase change."""
+        if hasattr(self, "hooks_manager") and self.hooks_manager:
+            from aider.hooks_manager import HookPoint
+
+            try:
+                self.hooks_manager.trigger(
+                    HookPoint.UI_PHASE_UPDATE,
+                    phase=phase,
+                    status=status,
+                    coder=self,
+                )
+            except Exception as e:
+                logger.debug(f"Error triggering UI_PHASE_UPDATE hook: {e}")
+
     def perform_research(self, user_request):
         """
         PARITY+: Librarian Phase. Find all relevant files before planning.
         """
+        self._trigger_ui_phase("Librarian")
         self.io.tool_output("Librarian: Identifying relevant project context...")
+
+        # Semantic retrieval from past tasks
+        past_context = self.project_memory.get_relevant_past_tasks(user_request)
+        if past_context:
+            self.io.tool_output("Librarian: Retrieved relevant context from project memory.")
+            user_request = f"{past_context}\n\nUser Request: {user_request}"
+
+        self.audit_manager.trace.user_request = user_request
 
         # Create a temporary coder with the Librarian persona
         # Use the @speed tier for efficient discovery
@@ -163,22 +194,40 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 )
 
         self.research_done = True
+        self.audit_manager.log_event("librarian_complete", files=list(self.abs_fnames))
 
     def run(self, with_message=None, preproc=True, **kwargs):
         """
         Override run to ensure research is performed before the plan.
         """
+        if with_message:
+            self.current_task = with_message
+
         if with_message and not self.research_done:
             # First turn of a new request: perform research
             if preproc:
                 self.perform_research(with_message)
 
-        return super().run(with_message=with_message, preproc=preproc, **kwargs)
+        if not kwargs.get("is_reviewer"):
+            self._trigger_ui_phase("Architect")
+            self.audit_manager.log_event("architect_start")
+            # Show the live dashboard for autonomous mode
+            self.io.show_dashboard()
+
+        try:
+            result = super().run(with_message=with_message, preproc=preproc, **kwargs)
+            if not kwargs.get("is_reviewer"):
+                self.audit_manager.log_event("architect_complete", plan=result)
+            return result
+        finally:
+            if not kwargs.get("is_reviewer"):
+                self.io.hide_dashboard()
 
     def critique_plan(self, plan):
         """
         Structural Self-Critique: Spawns a reviewer to find flaws in the plan.
         """
+        self._trigger_ui_phase("Reviewer")
         self.io.tool_output("Initiating structural self-critique...")
 
         # Create a temporary coder with the Reviewer persona
@@ -239,9 +288,42 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 # Reset circuit breaker on success
                 self._critique_count = 0
 
+        # PHASE: Security Scan
+        self._trigger_ui_phase("Security Scan")
+        self.io.tool_output("Scanning plan for security vulnerabilities...")
+
+        policy_result = self.policy_engine.scan(content)
+
+        self.audit_manager.log_event(
+            "security_scan",
+            success=policy_result.success,
+            violations=[asdict(v) for v in policy_result.violations],
+        )
+
+        # Trigger Hook for UI
+        if hasattr(self, "hooks_manager") and self.hooks_manager:
+            from aider.hooks_manager import HookPoint
+
+            self.hooks_manager.execute_hooks(
+                HookPoint.UI_POLICY_CHECK,
+                {"result": policy_result},
+            )
+
+        if not policy_result.success:
+            self.io.tool_error("SECURITY BLOCKER: Potential vulnerabilities detected in the plan.")
+            self._trigger_ui_phase("Security Scan", status="failed")
+
+            # If there are critical violations, we must stop unless forced (enterprise safety)
+            if policy_result.has_critical:
+                self.io.tool_error("Implementation ABORTED due to critical security risks.")
+                return
+
+        self._trigger_ui_phase("Security Scan", status="complete")
+
         # Proceed to Editor Phase
         # COORDINATION-ONLY MODE: Prevent direct implementation
         if self.coordination_only:
+            self._trigger_ui_phase("Coordination", status="complete")
             self.io.tool_output(
                 "Coordination-only mode: Plan complete. Ready for delegation to specialists."
             )
@@ -250,8 +332,10 @@ class ArchitectCoder(ToolEnabledCoderV2):
             return
 
         if not self.auto_accept_architect and not self.io.confirm_ask("Edit the files?"):
+            self._trigger_ui_phase("Architect", status="complete")
             return
 
+        self._trigger_ui_phase("Editor")
         kwargs = dict()
 
         # Use the editor_model from the main_model if it exists, otherwise use the main_model itself
@@ -269,6 +353,10 @@ class ArchitectCoder(ToolEnabledCoderV2):
         new_kwargs = dict(io=self.io, from_coder=self)
         new_kwargs.update(kwargs)
 
+        # Inherit review settings for the editor phase
+        new_kwargs["review_mode"] = self.review_mode
+        new_kwargs["auto_review"] = self.auto_review
+
         editor_coder = Coder.create(**new_kwargs)
         editor_coder.cur_messages = []
         editor_coder.done_messages = []
@@ -281,6 +369,12 @@ class ArchitectCoder(ToolEnabledCoderV2):
         self.move_back_cur_messages("I made those changes to the files.")
         self.total_cost = editor_coder.total_cost
         self.aider_commit_hashes = editor_coder.aider_commit_hashes
+
+        # Record implementation in project memory
+        self.project_memory.record_decision(
+            task=getattr(self, "current_task", None) or content,
+            plan=content,
+        )
 
         # PARITY+: Autonomous Recursive Verification with Circuit Breaker
         if self.auto_test and self.test_cmd:
@@ -312,6 +406,8 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 self.io.tool_output("Tests passed! Work verified.")
                 # Reset circuit breaker on test success
                 self._critique_count = 0
+
+        self._trigger_ui_phase("Architect", status="complete")
 
         # PARITY+: Proactive Terminal Monitoring
         if hasattr(self, "tool_router") and self.tool_router.terminal_watcher.processes:

@@ -22,10 +22,14 @@ Usage:
 import asyncio
 import threading
 import time
+import types
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+
+from aider.hooks_manager import HookPoint
+from aider.session_runtime import SessionRuntime
 
 # Import tools_v2 components
 from aider.tools_v2 import (
@@ -601,6 +605,78 @@ class TestToolRouterV2:
 
         # After context exit, resources should be cleaned up
         # (No explicit assertion - test passes if no exception during cleanup)
+
+    def test_delegate_uses_registry_and_async_executor_run(
+        self, mock_commands, mock_io, mock_coder
+    ):
+        """Delegate should create an AgentRegistry and use AsyncExecutor.run."""
+        mock_coder.delegation_depth = 0
+        mock_coder.agent_registry = None
+        mock_coder.runtime = None
+        router = ToolRouterV2(mock_commands, mock_io, mock_coder, RouterConfig())
+        fake_result = types.SimpleNamespace(success=True, output="done", error=None)
+
+        with patch("aider.agents.registry.AgentRegistry") as registry_cls:
+            with patch("aider.agents.executor.AgentExecutor") as executor_cls:
+                executor = executor_cls.return_value
+                executor.spawn_and_run = AsyncMock(return_value=fake_result)
+
+                result = router._exec_delegate({"agent_name": "spec", "mission": "fix bug"})
+
+        registry_cls.assert_called_once()
+        executor_cls.assert_called_once_with(mock_coder.agent_registry, mock_io)
+        assert result.success is True
+        assert "done" in result.output
+
+    def test_router_cleanup_does_not_shutdown_shared_async_executor(
+        self, mock_commands, mock_io, mock_coder
+    ):
+        """Router cleanup should not tear down the process-wide AsyncExecutor."""
+        router = ToolRouterV2(mock_commands, mock_io, mock_coder, RouterConfig())
+        executor = router.async_executor
+
+        router.shutdown()
+
+        assert executor.is_shutdown is False
+
+    def test_router_reuses_runtime_tool_services(self, mock_commands, mock_io, mock_coder):
+        """Routers should reuse session-owned tool services when available."""
+        runtime = SessionRuntime.create(io=mock_io, analytics=Mock())
+        shared_services = runtime.get_tool_services()
+        mock_coder.runtime = runtime
+
+        router = ToolRouterV2(mock_commands, mock_io, mock_coder, RouterConfig())
+
+        assert router.runtime is runtime
+        assert router.async_executor is runtime.async_executor
+        assert router.compressor is shared_services.compressor
+        assert router.openclaw_client is shared_services.openclaw_client
+        assert router.mcp_manager is shared_services.mcp_manager
+        assert router.terminal_watcher is shared_services.terminal_watcher
+        assert router.resilient_executor is shared_services.resilient_executor
+
+        router.shutdown()
+
+    def test_trigger_ui_tool_uses_execute_hooks(self, mock_commands, mock_io, mock_coder):
+        """UI tool progress should use the unified hooks API."""
+        runtime = SessionRuntime.create(io=mock_io, analytics=Mock())
+        runtime.hooks_manager = Mock()
+        runtime.hooks_manager.execute_hooks = Mock(return_value=[])
+        mock_coder.runtime = runtime
+        mock_coder.hooks_manager = runtime.hooks_manager
+
+        router = ToolRouterV2(mock_commands, mock_io, mock_coder, RouterConfig())
+
+        router._trigger_ui_tool("run", "executing", 0.5)
+
+        runtime.hooks_manager.execute_hooks.assert_called_once()
+        call_args = runtime.hooks_manager.execute_hooks.call_args
+        assert call_args.args[0] == HookPoint.UI_TOOL_PROGRESS
+        assert call_args.args[1]["tool_name"] == "run"
+        assert call_args.args[1]["message"] == "executing"
+        assert call_args.args[1]["progress"] == 0.5
+
+        router.shutdown()
 
 
 # =============================================================================
@@ -1387,6 +1463,27 @@ class TestConfiguration:
 
         assert ToolEnabledCoderV2.DEFAULT_MAX_TOOL_CALLS == 25
         assert ToolEnabledCoderV2.DEFAULT_MAX_TOOL_COST == 2.5
+
+
+class TestToolEnabledCoderV2:
+    """Regression tests for ToolEnabledCoderV2."""
+
+    def test_process_final_response_uses_base_apply_updates_contract(self):
+        """Final responses populate partial_response_content before applying edits."""
+        from aider.coders.tool_coder_v2 import ToolEnabledCoderV2
+
+        coder = ToolEnabledCoderV2.__new__(ToolEnabledCoderV2)
+        coder.partial_response_content = ""
+        coder.apply_updates = Mock(return_value={"test.py"})
+        coder.get_edited_files = Mock(return_value={"test.py"})
+        coder.aider_edited_files = set()
+
+        result = coder._process_final_response("updated content", [])
+
+        assert result == "updated content"
+        assert coder.partial_response_content == "updated content"
+        coder.apply_updates.assert_called_once_with()
+        assert coder.aider_edited_files == {"test.py"}
 
 
 # =============================================================================

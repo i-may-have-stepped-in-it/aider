@@ -342,7 +342,7 @@ class Model(ModelSettings):
             (ms for ms in MODEL_SETTINGS if ms.name == "aider/extra_params"), None
         )
 
-        self.info = self.get_model_info(model)
+        self.info = dict(self.get_model_info(model) or {})
 
         # Are all needed keys/params available?
         res = self.validate_environment()

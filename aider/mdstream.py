@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import io
+import shutil
 import time
 
 from rich import box
@@ -118,6 +119,14 @@ class MarkdownStream:
         # Defer Live creation until the first update.
         self.live = None
         self._live_started = False
+        self.console = Console()
+        self.live_window = self._compute_live_window()
+
+    def _compute_live_window(self):
+        """Choose a live window that fits the current terminal instead of a tiny fixed footer."""
+        lines = shutil.get_terminal_size((80, 24)).lines
+        reserve = 4
+        return max(6, min(20, lines - reserve))
 
     def _render_markdown_to_lines(self, text):
         """Render markdown text to a list of lines.
@@ -165,7 +174,15 @@ class MarkdownStream:
         """
         # On the first call, stop the spinner and start the Live renderer
         if not getattr(self, "_live_started", False):
-            self.live = Live(Text(""), refresh_per_second=1.0 / self.min_delay)
+            self.live_window = self._compute_live_window()
+            self.live = Live(
+                Text(""),
+                console=self.console,
+                refresh_per_second=1.0 / self.min_delay,
+                transient=True,
+                vertical_overflow="crop",
+                auto_refresh=False,
+            )
             self.live.start()
             self._live_started = True
 
@@ -212,6 +229,7 @@ class MarkdownStream:
         # Handle final update cleanup
         if final:
             self.live.update(Text(""))
+            self.live.refresh()
             self.live.stop()
             self.live = None
             return
@@ -221,6 +239,7 @@ class MarkdownStream:
         rest = "".join(rest)
         rest = Text.from_ansi(rest)
         self.live.update(rest)
+        self.live.refresh()
 
     def find_minimal_suffix(self, text, match_lines=50):
         """

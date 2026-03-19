@@ -345,6 +345,10 @@ class AccurateCostTracker:
     # Callbacks for budget events
     on_budget_warning: Optional[Callable[[float, str], None]] = None
     on_budget_exceeded: Optional[Callable[[str], None]] = None
+    on_cost_update: Optional[Callable[[float, float], None]] = None
+
+    # Hooks for event-driven UI
+    hooks: Optional[Any] = None
 
     def __post_init__(self):
         """Initialize pricing based on model."""
@@ -493,11 +497,47 @@ class AccurateCostTracker:
         self.iterations.append(breakdown)
         self._current = None
 
+        # Trigger UI update
+        self._trigger_ui_update()
+
         return breakdown
+
+    def _trigger_ui_update(self) -> None:
+        """Notify observers of cost change."""
+        total = self.total_cost
+        percentage = (total / self.max_budget) * 100 if self.max_budget > 0 else 0
+
+        # 1. Trigger callback
+        if self.on_cost_update:
+            try:
+                self.on_cost_update(total, percentage)
+            except Exception as e:
+                logger.error(f"Error in on_cost_update callback: {e}")
+
+        # 2. Trigger Hook
+        if self.hooks:
+            from aider.hooks_manager import HookPoint
+
+            try:
+                self.hooks.execute_hooks(
+                    HookPoint.UI_COST_UPDATE,
+                    {
+                        "total": total,
+                        "percentage": percentage,
+                        "budget": self.max_budget,
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Error triggering UI_COST_UPDATE hook: {e}")
+
+    @property
+    def total_cost(self) -> float:
+        """Budget consumed so far (API costs only)."""
+        return self._total_billed_cost
 
     @property
     def consumed_budget(self) -> float:
-        """Budget consumed so far (API costs only)."""
+        """Backward-compatible alias for total billed cost."""
         return self._total_billed_cost
 
     @property

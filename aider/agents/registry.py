@@ -73,11 +73,20 @@ class AgentRegistry:
     A2A is always enabled - no flag needed.
     """
 
-    def __init__(self, max_concurrent: int = 5, enable_acp: bool = False):
+    def __init__(
+        self,
+        max_concurrent: int = 5,
+        enable_acp: bool = False,
+        max_memory_mb: Optional[float] = None,
+    ):
         self._agents: dict[str, SubAgent] = {}
         self._lock = asyncio.Lock()
         self._max_concurrent = max_concurrent
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._max_memory = None if max_memory_mb is None else int(max_memory_mb * 1024 * 1024)
+
+        # Circuit breaker for fault tolerance
+        self.circuit_breaker = CircuitBreaker()
 
         # A2A is always available
         from ..a2a.bus import A2AMessageBus

@@ -9,17 +9,17 @@ from typing import Any, Optional
 
 class ToolSchemaGenerator:
     """Generates OpenAI-compatible tool schemas from aider Commands.
-    
+
     This class provides schemas for aider commands that can be used with
     LLM function calling APIs. Each schema defines the command's parameters,
     types, and descriptions in the OpenAI function format.
-    
+
     Example:
         >>> schemas = ToolSchemaGenerator.generate_all()
         >>> print(schemas[0]["function"]["name"])
         'run'
     """
-    
+
     # Command schemas in OpenAI-compatible format
     COMMAND_SCHEMAS: dict[str, dict[str, Any]] = {
         "run": {
@@ -59,8 +59,14 @@ class ToolSchemaGenerator:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "A unique name for this process."},
-                        "command": {"type": "string", "description": "The command to run in the background."},
+                        "name": {
+                            "type": "string",
+                            "description": "A unique name for this process.",
+                        },
+                        "command": {
+                            "type": "string",
+                            "description": "The command to run in the background.",
+                        },
                     },
                     "required": ["name", "command"],
                     "additionalProperties": False,
@@ -75,8 +81,15 @@ class ToolSchemaGenerator:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "The name of the process to read logs from."},
-                        "lines": {"type": "integer", "description": "Number of recent lines to retrieve.", "default": 50},
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the process to read logs from.",
+                        },
+                        "lines": {
+                            "type": "integer",
+                            "description": "Number of recent lines to retrieve.",
+                            "default": 50,
+                        },
                     },
                     "required": ["name"],
                     "additionalProperties": False,
@@ -297,11 +310,16 @@ class ToolSchemaGenerator:
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "The search query to execute. Example: 'latest react-router v7 docs'",
+                            "description": (
+                                "The search query to execute. Example: 'latest react-router v7"
+                                " docs'"
+                            ),
                         },
                         "max_results": {
                             "type": "integer",
-                            "description": "Maximum number of search results to return (default 5).",
+                            "description": (
+                                "Maximum number of search results to return (default 5)."
+                            ),
                         },
                     },
                     "required": ["query"],
@@ -344,7 +362,10 @@ class ToolSchemaGenerator:
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "The semantic search query. Example: 'auth-middleware implementation'",
+                            "description": (
+                                "The semantic search query. Example: 'auth-middleware"
+                                " implementation'"
+                            ),
                         },
                         "limit": {
                             "type": "integer",
@@ -361,24 +382,34 @@ class ToolSchemaGenerator:
             "function": {
                 "name": "delegate",
                 "description": (
-                    "Spawn a specialized sub-agent to handle a specific sub-mission. "
-                    "Use this for complex tasks that can be partitioned into independent pieces, "
-                    "or when you need a specialist to focus on a particular area (e.g. testing, docs, a specific directory)."
+                    "Spawn a specialized sub-agent to handle a specific sub-mission. Use this for"
+                    " complex tasks that can be partitioned into independent pieces, or when you"
+                    " need a specialist to focus on a particular area (e.g. testing, docs, a"
+                    " specific directory)."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "agent_name": {
                             "type": "string",
-                            "description": "A descriptive name for the specialist (e.g. 'tester', 'migration-expert').",
+                            "description": (
+                                "A descriptive name for the specialist (e.g. 'tester',"
+                                " 'migration-expert')."
+                            ),
                         },
                         "mission": {
                             "type": "string",
-                            "description": "The specific mission for the sub-agent. Be detailed and unambiguous.",
+                            "description": (
+                                "The specific mission for the sub-agent. Be detailed and"
+                                " unambiguous."
+                            ),
                         },
                         "decompose": {
                             "type": "boolean",
-                            "description": "If True, automatically break the mission into multiple parallel sub-tasks. Use this for very large or complex requests.",
+                            "description": (
+                                "If True, automatically break the mission into multiple parallel"
+                                " sub-tasks. Use this for very large or complex requests."
+                            ),
                             "default": False,
                         },
                     },
@@ -392,9 +423,9 @@ class ToolSchemaGenerator:
             "function": {
                 "name": "browser_action",
                 "description": (
-                    "Perform interactive browser actions (click, type, screenshot) via OpenClaw Gateway. "
-                    "Use this for visual verification, testing, or multi-step navigation. "
-                    "The browser state (cookies, session) is preserved between calls."
+                    "Perform interactive browser actions (click, type, screenshot) via OpenClaw"
+                    " Gateway. Use this for visual verification, testing, or multi-step navigation."
+                    " The browser state (cookies, session) is preserved between calls."
                 ),
                 "parameters": {
                     "type": "object",
@@ -426,7 +457,10 @@ class ToolSchemaGenerator:
             "type": "function",
             "function": {
                 "name": "mcp_list_resources",
-                "description": "List all available resources from connected MCP servers (Model Context Protocol).",
+                "description": (
+                    "List all available resources from connected MCP servers (Model Context"
+                    " Protocol)."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -439,13 +473,18 @@ class ToolSchemaGenerator:
             "type": "function",
             "function": {
                 "name": "mcp_read_resource",
-                "description": "Read the content of an MCP resource (e.g. database schema, remote file, log).",
+                "description": (
+                    "Read the content of an MCP resource (e.g. database schema, remote file, log)."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "uri": {
                             "type": "string",
-                            "description": "The URI of the resource to read (get this from mcp_list_resources).",
+                            "description": (
+                                "The URI of the resource to read (get this from"
+                                " mcp_list_resources)."
+                            ),
                         },
                     },
                     "required": ["uri"],
@@ -481,7 +520,10 @@ class ToolSchemaGenerator:
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "The process name."},
-                        "lines": {"type": "integer", "description": "Number of recent lines to read (default 50)."},
+                        "lines": {
+                            "type": "integer",
+                            "description": "Number of recent lines to read (default 50).",
+                        },
                     },
                     "required": ["name"],
                     "additionalProperties": False,
@@ -492,12 +534,17 @@ class ToolSchemaGenerator:
             "type": "function",
             "function": {
                 "name": "terminal_watch_input",
-                "description": "Send interactive input (text/keys) to a background process's stdin.",
+                "description": (
+                    "Send interactive input (text/keys) to a background process's stdin."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string", "description": "The process name."},
-                        "text": {"type": "string", "description": "The text to send. Include \\n for Enter."},
+                        "text": {
+                            "type": "string",
+                            "description": "The text to send. Include \\n for Enter.",
+                        },
                     },
                     "required": ["name", "text"],
                     "additionalProperties": False,
@@ -514,8 +561,8 @@ class ToolSchemaGenerator:
                     "properties": {
                         "name": {"type": "string", "description": "The process name."},
                         "signal": {
-                            "type": "integer", 
-                            "description": "Signal number (e.g. 2 for SIGINT, 15 for SIGTERM)."
+                            "type": "integer",
+                            "description": "Signal number (e.g. 2 for SIGINT, 15 for SIGTERM).",
                         },
                     },
                     "required": ["name", "signal"],
@@ -539,13 +586,12 @@ class ToolSchemaGenerator:
             },
         },
     }
-    
+
     # Mapping of command names to their descriptions
     COMMAND_DESCRIPTIONS: dict[str, str] = {
-        name: schema["function"]["description"]
-        for name, schema in COMMAND_SCHEMAS.items()
+        name: schema["function"]["description"] for name, schema in COMMAND_SCHEMAS.items()
     }
-    
+
     @classmethod
     def generate_all(cls, coder: Optional[Any] = None) -> list[dict[str, Any]]:
         """Generate complete tool definitions for litellm.
@@ -563,26 +609,29 @@ class ToolSchemaGenerator:
         # Add MCP tools if available
         if coder and hasattr(coder, "tool_router") and hasattr(coder.tool_router, "mcp_manager"):
             for mcp_tool in coder.tool_router.mcp_manager.get_all_tools():
-                schemas.append({
-                    "type": "function",
-                    "function": {
-                        "name": mcp_tool.name,
-                        "description": mcp_tool.description,
-                        "parameters": mcp_tool.input_schema
+                schemas.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": mcp_tool.name,
+                            "description": mcp_tool.description,
+                            "parameters": mcp_tool.input_schema,
+                        },
                     }
-                })
+                )
 
         return schemas
+
     @classmethod
     def get_command_schemas(cls) -> dict[str, dict[str, Any]]:
         """Get schemas as dict for command routing.
-        
+
         Returns a dictionary mapping command names to their schemas.
         Useful for looking up schemas by command name.
-        
+
         Returns:
             Dictionary with command names as keys and schema dicts as values.
-            
+
         Example:
             >>> schemas = ToolSchemaGenerator.get_command_schemas()
             >>> "run" in schemas
@@ -591,17 +640,17 @@ class ToolSchemaGenerator:
             'commit'
         """
         return cls.COMMAND_SCHEMAS.copy()
-    
+
     @classmethod
     def get_tool_description(cls, name: str) -> Optional[str]:
         """Get description for a specific tool.
-        
+
         Args:
             name: The name of the tool/command.
-            
+
         Returns:
             The description string if the tool exists, None otherwise.
-            
+
         Example:
             >>> desc = ToolSchemaGenerator.get_tool_description("run")
             >>> "shell" in desc.lower()
@@ -610,34 +659,34 @@ class ToolSchemaGenerator:
             None
         """
         return cls.COMMAND_DESCRIPTIONS.get(name)
-    
+
     @classmethod
     def get_tool_schema(cls, name: str) -> Optional[dict[str, Any]]:
         """Get the full schema for a specific tool.
-        
+
         Args:
             name: The name of the tool/command.
-            
+
         Returns:
             The full schema dict if the tool exists, None otherwise.
-            
+
         Example:
             >>> schema = ToolSchemaGenerator.get_tool_schema("add")
             >>> schema["function"]["parameters"]["required"]
             ['files']
         """
         return cls.COMMAND_SCHEMAS.get(name)
-    
+
     @classmethod
     def get_required_params(cls, name: str) -> list[str]:
         """Get the required parameter names for a tool.
-        
+
         Args:
             name: The name of the tool/command.
-            
+
         Returns:
             List of required parameter names. Empty list if tool not found.
-            
+
         Example:
             >>> ToolSchemaGenerator.get_required_params("run")
             ['command']
@@ -648,18 +697,18 @@ class ToolSchemaGenerator:
         if schema is None:
             return []
         return schema["function"]["parameters"].get("required", [])
-    
+
     @classmethod
     def validate_tool_call(cls, name: str, arguments: dict[str, Any]) -> tuple[bool, Optional[str]]:
         """Validate tool call arguments against the schema.
-        
+
         Args:
             name: The name of the tool/command.
             arguments: Dictionary of arguments to validate.
-            
+
         Returns:
             Tuple of (is_valid, error_message). If valid, error_message is None.
-            
+
         Example:
             >>> valid, error = ToolSchemaGenerator.validate_tool_call("run", {"command": "ls"})
             >>> valid
@@ -673,31 +722,31 @@ class ToolSchemaGenerator:
         schema = cls.COMMAND_SCHEMAS.get(name)
         if schema is None:
             return False, f"Unknown tool: {name}"
-        
+
         params = schema["function"]["parameters"]
         required = params.get("required", [])
         properties = params.get("properties", {})
-        
+
         # Check required parameters
         for param in required:
             if param not in arguments:
                 return False, f"Missing required parameter: {param}"
-        
+
         # Check for unknown parameters
         if not params.get("additionalProperties", True):
             for key in arguments:
                 if key not in properties:
                     return False, f"Unknown parameter: {key}"
-        
+
         return True, None
-    
+
     @classmethod
     def get_tool_names(cls) -> list[str]:
         """Get a list of all available tool names.
-        
+
         Returns:
             Sorted list of tool/command names.
-            
+
         Example:
             >>> names = ToolSchemaGenerator.get_tool_names()
             >>> "run" in names
@@ -713,19 +762,20 @@ class ToolSchemaGenerator:
         Fetch tools from the upstream gateway (OpenClaw/OpenRouter/etc).
         Enables 'upstream skill awareness'.
         """
-        import os
-        import httpx
         import logging
-        
+        import os
+
+        import httpx
+
         logger = logging.getLogger(__name__)
         gateway_url = os.environ.get("OPENAI_API_BASE")
         if not gateway_url:
             return []
-            
+
         # Try to fetch from /tools or /skills endpoint
         # The gateway often exposes its available skills/tools here
         tools_url = gateway_url.rstrip("/") + "/tools"
-        
+
         try:
             with httpx.Client(timeout=5.0) as client:
                 response = client.get(tools_url)
@@ -738,17 +788,18 @@ class ToolSchemaGenerator:
                         return upstream_tools
         except Exception as e:
             logger.debug(f"Failed to fetch upstream tools from {tools_url}: {e}")
-            
+
         return []
 
 
 # Convenience functions for direct use
 
+
 def get_tool_schemas() -> list[dict[str, Any]]:
     """Get all tool schemas as a list for litellm.
-    
+
     This is a convenience function that calls ToolSchemaGenerator.generate_all().
-    
+
     Returns:
         List of all tool schemas in OpenAI-compatible format.
     """
@@ -757,12 +808,12 @@ def get_tool_schemas() -> list[dict[str, Any]]:
 
 def get_tool_schema(name: str) -> Optional[dict[str, Any]]:
     """Get schema for a specific tool.
-    
+
     This is a convenience function that calls ToolSchemaGenerator.get_tool_schema().
-    
+
     Args:
         name: The name of the tool/command.
-        
+
     Returns:
         The schema dict if found, None otherwise.
     """
@@ -771,7 +822,7 @@ def get_tool_schema(name: str) -> Optional[dict[str, Any]]:
 
 def get_tool_descriptions() -> dict[str, str]:
     """Get descriptions for all tools.
-    
+
     Returns:
         Dictionary mapping tool names to their descriptions.
     """

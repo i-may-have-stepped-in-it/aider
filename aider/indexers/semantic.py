@@ -1,5 +1,7 @@
 import hashlib
+import logging
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -7,9 +9,14 @@ import numpy as np
 
 from aider.llm import litellm
 
+logger = logging.getLogger(__name__)
+
 
 class SemanticIndexer:
     """Local vector index for Aider using SQLite and LiteLLM embeddings with Chunking."""
+
+    _db_locks = {}
+    _db_locks_guard = threading.Lock()
 
     def __init__(
         self,
@@ -29,10 +36,29 @@ class SemanticIndexer:
         else:
             self.db_path = self.root / ".aider" / "semantic.db"
         self.db_path.parent.mkdir(exist_ok=True, parents=True)
+        self._embedding_available = True
         self._init_db()
 
+    def _get_db_lock(self):
+        db_key = str(self.db_path)
+        with self._db_locks_guard:
+            if db_key not in self._db_locks:
+                self._db_locks[db_key] = threading.Lock()
+            return self._db_locks[db_key]
+
+    def _connect(self):
+        conn = sqlite3.connect(self.db_path, timeout=30)
+        conn.execute("PRAGMA busy_timeout = 30000")
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
+
+    def _mark_embedding_unavailable(self, error, context):
+        if self._embedding_available:
+            logger.warning("Semantic indexing disabled after %s: %s", context, error)
+        self._embedding_available = False
+
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_db_lock(), self._connect() as conn:
             # Migration: Use a chunk-based table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS file_chunks
@@ -63,7 +89,7 @@ class SemanticIndexer:
 
     def cleanup_orphaned_entries(self, active_files: List[str]):
         """Remove database entries for files that no longer exist in the project."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_db_lock(), self._connect() as conn:
             # Get all unique file paths in the database
             db_files = [
                 row[0] for row in conn.execute("SELECT DISTINCT path FROM file_chunks").fetchall()
@@ -78,17 +104,22 @@ class SemanticIndexer:
             ]
 
             if orphaned:
-                print(f"Cleaning up {len(orphaned)} orphaned entries from semantic index...")
+                logger.info("Cleaning up %s orphaned entries from semantic index", len(orphaned))
                 for f in orphaned:
                     conn.execute("DELETE FROM file_chunks WHERE path=?", (f,))
 
     def update_index(self, files: List[str]):
         """Incrementally update overlapping chunks for changed files."""
+        if not self._embedding_available:
+            return
+
         # PARITY+: Maintain database integrity
         self.cleanup_orphaned_entries(files)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_db_lock(), self._connect() as conn:
             for f_str in files:
+                if not self._embedding_available:
+                    break
                 f_path = self.root / f_str
                 if not f_path.exists() or f_path.is_dir():
                     continue
@@ -127,13 +158,14 @@ class SemanticIndexer:
                             (f_str, i, file_hash, embedding_blob),
                         )
                     except Exception as e:
-                        print(f"Embedding error for {f_str} chunk {i}: {e}")
-                        # Stop indexing this file if model fails
-                        # (e.g. context limit still hit)
+                        self._mark_embedding_unavailable(e, f"{f_str} chunk {i}")
                         break
 
     def query(self, query: str, limit: int = 5) -> List[Tuple[str, float]]:
         """Semantic search returning best matching files via chunk deduplication."""
+        if not self._embedding_available:
+            return []
+
         try:
             response = litellm.embedding(
                 model=self.model_name, input=[query], api_base=self.api_base
@@ -141,13 +173,14 @@ class SemanticIndexer:
             data = response.data[0]
             raw_embedding = data["embedding"] if isinstance(data, dict) else data.embedding
             q_vec = np.array(raw_embedding, dtype=np.float32)
-        except Exception:
+        except Exception as e:
+            self._mark_embedding_unavailable(e, "query embedding")
             return []
 
         # Store best score per file
         file_scores: Dict[str, float] = {}
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_db_lock(), self._connect() as conn:
             for path, _, _, vec_blob in conn.execute("SELECT * FROM file_chunks"):
                 f_vec = np.frombuffer(vec_blob, dtype=np.float32)
                 # Cosine Similarity
@@ -162,12 +195,17 @@ class SemanticIndexer:
 
     def add_content(self, identifier: str, content: str):
         """Add overlapping chunks of raw content."""
+        if not self._embedding_available:
+            return
+
         file_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
         chunks = self._create_chunks(content)
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_db_lock(), self._connect() as conn:
             conn.execute("DELETE FROM file_chunks WHERE path=?", (identifier,))
             for i, chunk_text in enumerate(chunks[:20]):
+                if not self._embedding_available:
+                    break
                 try:
                     response = litellm.embedding(
                         model=self.model_name, input=[chunk_text], api_base=self.api_base
@@ -179,5 +217,6 @@ class SemanticIndexer:
                         "INSERT INTO file_chunks VALUES (?, ?, ?, ?)",
                         (identifier, i, file_hash, embedding_blob),
                     )
-                except Exception:
+                except Exception as e:
+                    self._mark_embedding_unavailable(e, f"{identifier} chunk {i}")
                     break

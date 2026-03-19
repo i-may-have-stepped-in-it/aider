@@ -9,10 +9,64 @@ from rich.text import Text
 
 from aider.dump import dump  # noqa: F401
 from aider.io import AutoCompleter, ConfirmGroup, InputOutput
+from aider.mdstream import MarkdownStream
 from aider.utils import ChdirTemporaryDirectory
 
 
 class TestInputOutput(unittest.TestCase):
+    def test_get_assistant_mdstream_uses_dynamic_transient_stream(self):
+        io = InputOutput(pretty=False, fancy_input=False, assistant_output_color="0088ff")
+
+        with patch.object(MarkdownStream, "_compute_live_window", return_value=12):
+            stream = io.get_assistant_mdstream()
+
+        self.assertEqual(stream.live_window, 12)
+        self.assertEqual(stream.mdargs["style"], "#0088ff")
+
+    def test_prepare_terminal_output_erases_active_prompt_renderer(self):
+        io = InputOutput(pretty=False, fancy_input=False)
+        renderer = MagicMock()
+        app = MagicMock()
+        app.is_running = True
+        app.renderer = renderer
+        io.prompt_session = MagicMock()
+        io.prompt_session.app = app
+
+        io.tool_output("hello")
+
+        renderer.erase.assert_called_once_with(leave_alternate_screen=True)
+
+    def test_get_input_toolbar_reflects_multiline_mode(self):
+        io = InputOutput(pretty=False, fancy_input=False, multiline_mode=False)
+        self.assertIn("Enter submit", io._get_input_toolbar())
+        self.assertIn("Alt-Enter newline", io._get_input_toolbar())
+
+        io.multiline_mode = True
+        toolbar = io._get_input_toolbar()
+        self.assertIn("Enter newline", toolbar)
+        self.assertIn("Alt-Enter submit", toolbar)
+
+    def test_get_prompt_toolbar_combines_status_and_input_hints(self):
+        io = InputOutput(pretty=False, fancy_input=False, multiline_mode=False)
+        io.status_data.update(
+            {
+                "mode": "AUTO",
+                "phase": "Planning",
+                "cost": 1.25,
+                "percentage": 25.0,
+                "agents": 2,
+                "hint": "Use /help",
+            }
+        )
+
+        toolbar = io._get_prompt_toolbar()
+
+        self.assertIn("[AUTO]", toolbar)
+        self.assertIn("(Planning)", toolbar)
+        self.assertIn("Agents: 2", toolbar)
+        self.assertIn("Hint: Use /help", toolbar)
+        self.assertIn("Enter submit", toolbar)
+
     def test_line_endings_validation(self):
         # Test valid line endings
         for ending in ["platform", "lf", "crlf"]:
@@ -79,6 +133,7 @@ class TestInputOutput(unittest.TestCase):
             [cmd for cmd in commands.get_commands() if cmd.startswith(inp.strip().split()[0])],
             inp.strip().split()[0],
             " ".join(inp.strip().split()[1:]),
+            None,
         )
         commands.get_raw_completions.return_value = None
         commands.get_completions.side_effect = lambda cmd: (

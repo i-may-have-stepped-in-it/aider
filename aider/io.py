@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 from prompt_toolkit.completion import Completer, Completion, ThreadedCompleter
 from prompt_toolkit.cursor_shapes import ModalCursorShapeConfig
@@ -161,7 +162,11 @@ class AutoCompleter(Completer):
         cmd = words[0]
         partial = words[-1].lower()
 
-        matches, _, _ = self.commands.matching_commands(cmd)
+        match_result = self.commands.matching_commands(cmd)
+        if match_result is None:
+            return
+
+        matches, _, _, _ = match_result
         if len(matches) == 1:
             cmd = matches[0]
         elif cmd not in matches:
@@ -344,6 +349,23 @@ class InputOutput:
             self.pretty = False
             fancy_input = False
 
+        self.status_data = {
+            "mode": "CHAT",
+            "phase": "Idle",
+            "cost": 0.0,
+            "percentage": 0.0,
+            "agents": 0,
+        }
+        self.dashboard = None
+        try:
+            from aider.gui.hints import HintManager
+
+            self.hint_manager = HintManager(self)
+        except Exception:
+            self.hint_manager = SimpleNamespace(
+                get_contextual_hint=lambda event_type, data=None: None
+            )
+
         if fancy_input:
             # Initialize PromptSession only if we have a capable terminal
             session_kwargs = {
@@ -351,6 +373,7 @@ class InputOutput:
                 "output": self.output,
                 "lexer": PygmentsLexer(MarkdownLexer),
                 "editing_mode": self.editingmode,
+                "bottom_toolbar": self._get_bottom_toolbar,
             }
             if self.editingmode == EditingMode.VI:
                 session_kwargs["cursor"] = ModalCursorShapeConfig()
@@ -372,6 +395,126 @@ class InputOutput:
 
         # Validate color settings after console is initialized
         self._validate_color_settings()
+
+    def _get_bottom_toolbar(self):
+        """Generate the bottom toolbar content based on current status."""
+        from prompt_toolkit.formatted_text import HTML
+
+        mode = self.status_data.get("mode", "CHAT").upper()
+        phase = self.status_data.get("phase", "Idle")
+        cost = self.status_data.get("cost", 0.0)
+        percentage = self.status_data.get("percentage", 0.0)
+        agents = self.status_data.get("agents", 0)
+        hint = self.status_data.get("hint", "")
+
+        # Style colors
+        mode_style = 'fg="#00ff00"' if mode == "AUTO" else 'fg="#ffffff"'
+        phase_style = 'fg="#ffff00"' if phase != "Idle" else ""
+        cost_style = 'fg="#ff00ff"'
+
+        hint_part = f" | Hint: {hint}" if hint else ""
+
+        return HTML(
+            f"<style {mode_style}>[{mode}]</style> "
+            f"<style {phase_style}>({phase})</style> "
+            f"<style {cost_style}>Cost: ${cost:.3f} ({percentage:.1f}%)</style> "
+            f"Agents: {agents}"
+            f"{hint_part}"
+        )
+
+    def show_hint(self, event_type: str, data: dict = None):
+        """Show a hint in the terminal status bar."""
+        hint = self.hint_manager.get_contextual_hint(event_type, data)
+        if hint:
+            self.status_data["hint"] = hint
+            if self.prompt_session:
+                self.prompt_session.app.invalidate()
+
+    def review_diff(self, filename, old_content, new_content):
+        """Review code diff with human in the loop."""
+        from .gui.diff_viewer import InteractiveDiffViewer
+
+        viewer = InteractiveDiffViewer(self)
+        return viewer.review_file(filename, old_content, new_content)
+
+    def on_phase_change(self, phase: str, status: str = "running"):
+        """Called when an autonomous workflow phase changes."""
+        self.status_data["phase"] = phase if status == "running" else "Idle"
+        if self.dashboard:
+            self.dashboard.on_phase_change(phase, status)
+        if self.prompt_session:
+            # Force a refresh of the UI
+            self.prompt_session.app.invalidate()
+
+    def on_cost_update(self, total: float, percentage: float):
+        """Called when the session cost is updated."""
+        self.status_data["cost"] = total
+        self.status_data["percentage"] = percentage
+        if self.dashboard:
+            self.dashboard.on_cost_update(total, percentage)
+        if self.prompt_session:
+            self.prompt_session.app.invalidate()
+
+    def on_agent_status(self, agent_id: str, status: str, task: str = None):
+        """Called when a sub-agent's status changes."""
+        if self.dashboard:
+            self.dashboard.on_agent_status(agent_id, status, task)
+        if self.prompt_session:
+            self.prompt_session.app.invalidate()
+
+    def on_policy_check(self, result: Any):
+        """Called when a security policy scan result is available."""
+        if self.dashboard:
+            self.dashboard.on_policy_check(result)
+
+        # Also print to terminal if there are violations
+        if hasattr(result, "violations") and result.violations:
+            from rich.panel import Panel
+            from rich.table import Table
+
+            table = Table(title="Security Policy Violations", border_style="red")
+            table.add_column("Rule", style="cyan")
+            table.add_column("Severity", style="bold red")
+            table.add_column("Message")
+
+            for v in result.violations:
+                table.add_row(v.rule_name, v.severity, v.message)
+
+            self.console.print(
+                Panel(table, border_style="red", title="[bold red]SECURITY ALERT[/bold red]")
+            )
+
+    def show_dashboard(self):
+        """Enable the live dashboard."""
+        if not self.pretty or self.is_dumb_terminal:
+            return
+
+        from .gui.dashboard import LiveDashboard
+
+        if not self.dashboard:
+            self.dashboard = LiveDashboard(console=self.console)
+            # Synchronize initial state
+            self.dashboard.on_cost_update(self.status_data["cost"], self.status_data["percentage"])
+            self.dashboard.on_phase_change(self.status_data["phase"])
+
+        self.dashboard.start()
+
+    def hide_dashboard(self):
+        """Disable the live dashboard."""
+        if self.dashboard:
+            self.dashboard.stop()
+
+    def update_agent_count(self, count: int):
+        """Update the number of active agents."""
+        self.status_data["agents"] = count
+        if self.prompt_session:
+            self.prompt_session.app.invalidate()
+
+    def set_mode(self, mode: str):
+        """Set the current mode (CHAT, AUTO, ASK, etc)."""
+        self.status_data["mode"] = mode
+        if self.prompt_session:
+            self.prompt_session.app.invalidate()
 
     def _validate_color_settings(self):
         """Validate configured color strings and reset invalid ones."""
@@ -398,6 +541,43 @@ class InputOutput:
                         f" {attr_name}: '{color_value}'. {e}. Disabling this color."
                     )
                     setattr(self, attr_name, None)  # Reset invalid color to None
+
+    def _prepare_terminal_output(self):
+        """Clear any active prompt-toolkit render area before printing with Rich."""
+        prompt_session = getattr(self, "prompt_session", None)
+        if not prompt_session:
+            return
+
+        app = getattr(prompt_session, "app", None)
+        if not app or not getattr(app, "is_running", False):
+            return
+
+        renderer = getattr(app, "renderer", None)
+        if not renderer:
+            return
+
+        try:
+            renderer.erase(leave_alternate_screen=True)
+        except Exception:
+            pass
+
+    def _get_input_toolbar(self):
+        if self.multiline_mode:
+            return " multiline: Enter newline | Alt-Enter submit | Ctrl-X Ctrl-E external editor "
+        return " Enter submit | Alt-Enter newline | Ctrl-X Ctrl-E external editor "
+
+    def _get_prompt_toolbar(self):
+        status_bar = self._get_bottom_toolbar()
+        input_toolbar = self._get_input_toolbar().strip()
+
+        if hasattr(status_bar, "formatted_text"):
+            status_text = "".join(fragment[1] for fragment in status_bar.formatted_text)
+        else:
+            status_text = str(status_bar)
+
+        if status_text and input_toolbar:
+            return f"{status_text} | {input_toolbar}"
+        return status_text or input_toolbar
 
     def _get_style(self):
         style_dict = {}
@@ -554,6 +734,7 @@ class InputOutput:
                 raise
 
     def rule(self):
+        self._prepare_terminal_output()
         if self.pretty:
             style = dict(style=self.user_input_color) if self.user_input_color else dict()
             self.console.rule(**style)
@@ -710,6 +891,7 @@ class InputOutput:
                         key_bindings=kb,
                         complete_while_typing=True,
                         prompt_continuation=get_continuation,
+                        bottom_toolbar=self._get_prompt_toolbar,
                     )
                 else:
                     line = input(show)
@@ -812,6 +994,7 @@ class InputOutput:
             self.llm_history_file = None
 
     def display_user_input(self, inp):
+        self._prepare_terminal_output()
         if self.pretty and self.user_input_color:
             style = dict(style=self.user_input_color)
         else:
@@ -1023,6 +1206,7 @@ class InputOutput:
             message = Text(message)
         color = ensure_hash_prefix(color) if color else None
         style = dict(style=color) if self.pretty and color else dict()
+        self._prepare_terminal_output()
         try:
             self.console.print(message, **style)
         except UnicodeEncodeError:
@@ -1056,6 +1240,7 @@ class InputOutput:
             style["reverse"] = bold
 
         style = RichStyle(**style)
+        self._prepare_terminal_output()
         self.console.print(*messages, style=style)
 
     def get_assistant_mdstream(self):
@@ -1085,6 +1270,7 @@ class InputOutput:
         else:
             show_resp = Text(message or "(empty response)")
 
+        self._prepare_terminal_output()
         self.console.print(show_resp)
 
     def set_placeholder(self, placeholder):

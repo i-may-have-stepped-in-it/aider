@@ -478,6 +478,15 @@ class AsyncExecutor:
         finally:
             self._active_futures.discard(future)
 
+    def run_sync(
+        self,
+        coro: Coroutine[Any, Any, T],
+        timeout: Optional[float] = None,
+        capture_partial: bool = False,
+    ) -> T:
+        """Compatibility wrapper for older call sites."""
+        return self.run(coro, timeout=timeout, capture_partial=capture_partial)
+
     def run_concurrent(
         self,
         coros: list[Coroutine[Any, Any, T]],

@@ -2,9 +2,6 @@ import asyncio
 import uuid
 from typing import List, Optional
 
-from ..a2a.bus import A2AMessageBus
-from ..agents.executor import AgentExecutor
-from ..agents.registry import AgentRegistry
 from .base import Skill, SkillContext, SkillResult
 
 
@@ -20,10 +17,38 @@ class SwarmSkill(Skill):
 
     def __init__(self, context: Optional[SkillContext] = None):
         super().__init__(context)
-        self.bus = A2AMessageBus()
-        # AgentExecutor requires a registry; we create one here for swarm use
-        self._registry = AgentRegistry()
-        self._executor = AgentExecutor(registry=self._registry)
+        from ..a2a.bus import A2AMessageBus
+        from ..agents.executor import AgentExecutor
+        from ..agents.registry import AgentRegistry
+
+        self._fallback_bus = A2AMessageBus()
+        self._fallback_registry = AgentRegistry()
+        self._fallback_executor = AgentExecutor(registry=self._fallback_registry)
+
+    def _runtime_agent_service(self):
+        runtime = getattr(getattr(self.context, "coder", None), "runtime", None)
+        return getattr(runtime, "agent_service", None)
+
+    @property
+    def bus(self):
+        agent_service = self._runtime_agent_service()
+        if agent_service:
+            return agent_service.a2a_bus
+        return self._fallback_bus
+
+    @property
+    def registry(self):
+        agent_service = self._runtime_agent_service()
+        if agent_service:
+            return agent_service.registry
+        return self._fallback_registry
+
+    @property
+    def executor(self):
+        agent_service = self._runtime_agent_service()
+        if agent_service:
+            return agent_service.executor
+        return self._fallback_executor
 
     async def execute(self, task: str, agents: Optional[List[str]] = None) -> SkillResult:
         """

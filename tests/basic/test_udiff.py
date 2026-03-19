@@ -1,6 +1,8 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from aider.coders.udiff_coder import find_diffs
+from aider.coders.udiff_coder import do_replace, find_diffs
 from aider.dump import dump  # noqa: F401
 
 
@@ -113,6 +115,16 @@ These changes will add the `--check-update` option to the command-line interface
         dump(edits)
         self.assertEqual(len(edits), 2)
         self.assertEqual(len(edits[0][1]), 3)
+
+    def test_do_replace_inserts_into_missing_new_file(self):
+        with TemporaryDirectory() as tmpdir:
+            fname = Path(tmpdir) / "new_file.py"
+            hunk = [" line1\n", "+line2\n"]
+
+            content = do_replace(fname, None, hunk)
+
+            self.assertEqual(content, "line1\nline2\n")
+            self.assertFalse(fname.exists())
 
 
 if __name__ == "__main__":

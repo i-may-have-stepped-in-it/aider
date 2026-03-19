@@ -6,10 +6,17 @@ Addresses Issue 23: Missing security tests
 """
 
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
+from aider.hooks_manager import HooksManager
 from aider.skills.base import Skill, SkillContext, SkillResult
 from aider.skills.registry import SkillRegistry
+from aider.skills.yaml_loader import YAMLSkillLoader
+
+pytestmark = pytest.mark.asyncio
 
 
 class SecurityTestSkill(Skill):
@@ -133,7 +140,7 @@ async def test_safe_command():
 
 def test_registry_thread_safety_concurrent_register():
     """Test registry handles concurrent registrations safely."""
-    registry = SkillRegistry()
+    registry = SkillRegistry(load_dynamic=False)
     errors = []
 
     def register_skill_thread(i):
@@ -163,7 +170,7 @@ def test_registry_thread_safety_concurrent_register():
 
 def test_registry_thread_safety_concurrent_read():
     """Test registry handles concurrent reads safely."""
-    registry = SkillRegistry()
+    registry = SkillRegistry(load_dynamic=False)
 
     # Register a skill first
     class TestSkill(Skill):
@@ -249,8 +256,36 @@ async def test_timeout_prevents_resource_exhaustion():
 
     # Should timeout well before 10 seconds
     assert result.success is False
-    assert "timeout" in result.error.lower()
+    assert "timed out" in result.error.lower()
     assert elapsed < 1.0  # Should fail within 1 second
+
+
+async def test_yaml_python_handler_disabled_by_default():
+    """Unsafe YAML python handlers require explicit opt-in."""
+    loader = YAMLSkillLoader()
+    skill_class = loader._create_skill_class(
+        {
+            "name": "yaml-python",
+            "handler": {
+                "type": "python",
+                "code": "result = SkillResult(success=True, output='unsafe')",
+            },
+        }
+    )
+    skill = skill_class(SkillContext())
+
+    result = await skill.execute()
+
+    assert result.success is False
+    assert "disabled" in result.error.lower()
+
+
+def test_hooks_condition_disallows_calls_and_attributes():
+    """Hook conditions should reject function calls and attribute traversal."""
+    manager = HooksManager()
+
+    assert manager._evaluate_condition("__import__('os').system('true')", {}) is False
+    assert manager._evaluate_condition("context.__class__", {"value": 1}) is False
 
 
 if __name__ == "__main__":

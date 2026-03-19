@@ -363,28 +363,29 @@ class TestMain(TestCase):
                 mock_check_version.assert_called_once()
                 mock_input_output.assert_called_once()
 
+    @patch("aider.main.create_coder")
     @patch("aider.main.InputOutput")
-    @patch("aider.coders.base_coder.Coder.run")
-    def test_main_message_adds_to_input_history(self, mock_run, MockInputOutput):
+    def test_main_message_adds_to_input_history(self, MockInputOutput, mock_create_coder):
         test_message = "test message"
         mock_io_instance = MockInputOutput.return_value
+        mock_create_coder.return_value = MagicMock()
 
         main(["--message", test_message], input=DummyInput(), output=DummyOutput())
 
         mock_io_instance.add_to_input_history.assert_called_once_with(test_message)
 
+    @patch("aider.main.dispatch_session_mode", return_value=(True, None))
     @patch("aider.main.InputOutput")
-    @patch("aider.coders.base_coder.Coder.run")
-    def test_yes(self, mock_run, MockInputOutput):
+    def test_yes(self, MockInputOutput, mock_dispatch):
         test_message = "test message"
 
         main(["--yes", "--message", test_message])
         args, kwargs = MockInputOutput.call_args
         self.assertTrue(args[1])
 
+    @patch("aider.main.dispatch_session_mode", return_value=(True, None))
     @patch("aider.main.InputOutput")
-    @patch("aider.coders.base_coder.Coder.run")
-    def test_default_yes(self, mock_run, MockInputOutput):
+    def test_default_yes(self, MockInputOutput, mock_dispatch):
         test_message = "test message"
 
         main(["--message", test_message])
@@ -539,7 +540,19 @@ class TestMain(TestCase):
             named_config.write_text("model: gpt-4-1106-preview\nmap-tokens: 8192\n")
 
             with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "AIDER_MODEL": "",
+                        "OPENAI_API_BASE": "",
+                        "OPENAI_API_KEY": "",
+                        "OPENROUTER_API_KEY": "",
+                        "ANTHROPIC_API_KEY": "",
+                    },
+                    clear=False,
+                ),
                 patch("pathlib.Path.home", return_value=fake_home),
+                patch("aider.onboarding.is_openclaw_configured", return_value=False),
                 patch("aider.coders.Coder.create") as MockCoder,
             ):
                 # Test loading from specified config file
@@ -683,12 +696,26 @@ class TestMain(TestCase):
 
     def test_sonnet_and_cache_prompts_options(self):
         with GitTemporaryDirectory():
-            coder = main(
-                ["--sonnet", "--cache-prompts", "--exit", "--yes"],
-                input=DummyInput(),
-                output=DummyOutput(),
-                return_coder=True,
-            )
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "AIDER_MODEL": "",
+                        "OPENAI_API_BASE": "",
+                        "OPENAI_API_KEY": "",
+                        "OPENROUTER_API_KEY": "",
+                        "ANTHROPIC_API_KEY": "",
+                    },
+                    clear=False,
+                ),
+                patch("aider.onboarding.is_openclaw_configured", return_value=False),
+            ):
+                coder = main(
+                    ["--sonnet", "--cache-prompts", "--exit", "--yes"],
+                    input=DummyInput(),
+                    output=DummyOutput(),
+                    return_coder=True,
+                )
 
             self.assertTrue(coder.add_cache_headers)
 
@@ -713,13 +740,57 @@ class TestMain(TestCase):
             )
             self.assertIsInstance(result, Coder)
 
-            result = main(
+            with patch("aider.main.webbrowser", create=True):
+                result = main(
+                    ["--exit", "--yes"],
+                    input=DummyInput(),
+                    output=DummyOutput(),
+                    return_coder=False,
+                )
+            self.assertIsNone(result)
+
+    def test_return_coder_uses_session_runtime(self):
+        with GitTemporaryDirectory():
+            coder = main(
                 ["--exit", "--yes"],
                 input=DummyInput(),
                 output=DummyOutput(),
-                return_coder=False,
+                return_coder=True,
             )
-            self.assertIsNone(result)
+
+            self.assertIsNotNone(coder.runtime)
+            self.assertIs(coder.commands.runtime, coder.runtime)
+            self.assertIs(coder.agent_service.io, coder.io)
+            self.assertIs(coder.runtime.agent_service, coder.agent_service)
+
+    def test_return_coder_does_not_start_background_semantic_index(self):
+        with GitTemporaryDirectory():
+            with patch("aider.main.check_and_load_imports"), patch(
+                "threading.Thread"
+            ) as mock_thread:
+                coder = main(
+                    ["--exit", "--yes"],
+                    input=DummyInput(),
+                    output=DummyOutput(),
+                    return_coder=True,
+                )
+
+            self.assertIsInstance(coder, Coder)
+            mock_thread.assert_not_called()
+
+    def test_return_coder_clone_preserves_runtime(self):
+        with GitTemporaryDirectory():
+            coder1 = main(
+                ["--exit", "--yes"],
+                input=DummyInput(),
+                output=DummyOutput(),
+                return_coder=True,
+            )
+            coder2 = Coder.create(from_coder=coder1)
+
+            self.assertIs(coder2.runtime, coder1.runtime)
+            self.assertIs(coder2.commands.runtime, coder1.runtime)
+            self.assertIs(coder2.agent_service, coder1.agent_service)
 
     def test_map_mul_option(self):
         with GitTemporaryDirectory():
@@ -1073,47 +1144,72 @@ class TestMain(TestCase):
 
     def test_default_model_selection(self):
         with GitTemporaryDirectory():
+            provider_env_keys = [
+                "AIDER_MODEL",
+                "AIDER_OPENCLAW_MODE",
+                "OPENAI_API_BASE",
+                "ANTHROPIC_API_KEY",
+                "DEEPSEEK_API_KEY",
+                "GEMINI_API_KEY",
+                "VERTEXAI_PROJECT",
+                "OPENROUTER_API_KEY",
+                "OPENAI_API_KEY",
+            ]
+
+            def reset_provider_env():
+                for key in provider_env_keys:
+                    os.environ.pop(key, None)
+
+            # Test OpenClaw endpoint priority
+            reset_provider_env()
+            os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:18789/v1"
+            coder = main(
+                ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
+            )
+            self.assertIn("openclaw", coder.main_model.name.lower())
+
             # Test Anthropic API key
+            reset_provider_env()
             os.environ["ANTHROPIC_API_KEY"] = "test-key"
             coder = main(
                 ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
             )
             self.assertIn("sonnet", coder.main_model.name.lower())
-            del os.environ["ANTHROPIC_API_KEY"]
 
             # Test DeepSeek API key
+            reset_provider_env()
             os.environ["DEEPSEEK_API_KEY"] = "test-key"
             coder = main(
                 ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
             )
             self.assertIn("deepseek", coder.main_model.name.lower())
-            del os.environ["DEEPSEEK_API_KEY"]
-
-            # Test OpenRouter API key
-            os.environ["OPENROUTER_API_KEY"] = "test-key"
-            coder = main(
-                ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
-            )
-            self.assertIn("openrouter/", coder.main_model.name.lower())
-            del os.environ["OPENROUTER_API_KEY"]
 
             # Test OpenAI API key
+            reset_provider_env()
             os.environ["OPENAI_API_KEY"] = "test-key"
             coder = main(
                 ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
             )
             self.assertIn("gpt-4", coder.main_model.name.lower())
-            del os.environ["OPENAI_API_KEY"]
+
+            # Test OpenRouter API key
+            reset_provider_env()
+            os.environ["OPENROUTER_API_KEY"] = "test-key"
+            coder = main(
+                ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
+            )
+            self.assertIn("openrouter/", coder.main_model.name.lower())
 
             # Test Gemini API key
+            reset_provider_env()
             os.environ["GEMINI_API_KEY"] = "test-key"
             coder = main(
                 ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
             )
             self.assertIn("gemini", coder.main_model.name.lower())
-            del os.environ["GEMINI_API_KEY"]
 
             # Test no API keys - should offer OpenRouter OAuth
+            reset_provider_env()
             with patch("aider.onboarding.offer_openrouter_oauth") as mock_offer_oauth:
                 mock_offer_oauth.return_value = None  # Simulate user declining or failure
                 result = main(["--exit", "--yes"], input=DummyInput(), output=DummyOutput())
@@ -1123,14 +1219,58 @@ class TestMain(TestCase):
     def test_model_precedence(self):
         with GitTemporaryDirectory():
             # Test that earlier API keys take precedence
+            for key in [
+                "AIDER_MODEL",
+                "AIDER_OPENCLAW_MODE",
+                "OPENAI_API_BASE",
+                "ANTHROPIC_API_KEY",
+                "OPENROUTER_API_KEY",
+                "OPENAI_API_KEY",
+            ]:
+                os.environ.pop(key, None)
+
             os.environ["ANTHROPIC_API_KEY"] = "test-key"
             os.environ["OPENAI_API_KEY"] = "test-key"
             coder = main(
                 ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
             )
             self.assertIn("sonnet", coder.main_model.name.lower())
-            del os.environ["ANTHROPIC_API_KEY"]
-            del os.environ["OPENAI_API_KEY"]
+
+            for key in [
+                "AIDER_MODEL",
+                "AIDER_OPENCLAW_MODE",
+                "OPENAI_API_BASE",
+                "ANTHROPIC_API_KEY",
+                "OPENROUTER_API_KEY",
+                "OPENAI_API_KEY",
+            ]:
+                os.environ.pop(key, None)
+
+            os.environ["OPENAI_API_KEY"] = "test-key"
+            os.environ["OPENROUTER_API_KEY"] = "test-key"
+            coder = main(
+                ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
+            )
+            self.assertIn("gpt-4", coder.main_model.name.lower())
+
+            for key in [
+                "AIDER_MODEL",
+                "AIDER_OPENCLAW_MODE",
+                "OPENAI_API_BASE",
+                "ANTHROPIC_API_KEY",
+                "OPENROUTER_API_KEY",
+                "OPENAI_API_KEY",
+            ]:
+                os.environ.pop(key, None)
+
+            os.environ["OPENAI_API_BASE"] = "http://127.0.0.1:18789/v1"
+            os.environ["ANTHROPIC_API_KEY"] = "test-key"
+            os.environ["OPENAI_API_KEY"] = "test-key"
+            os.environ["OPENROUTER_API_KEY"] = "test-key"
+            coder = main(
+                ["--exit", "--yes"], input=DummyInput(), output=DummyOutput(), return_coder=True
+            )
+            self.assertIn("openclaw", coder.main_model.name.lower())
 
     def test_chat_language_spanish(self):
         with GitTemporaryDirectory():

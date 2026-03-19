@@ -2,18 +2,22 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import git
+from PIL import Image
 
+from aider.analytics import Analytics
 from aider.coders import Coder
 from aider.coders.base_coder import FinishReasonLength, UnknownEditFormat
+from aider.coders.base_coder_runtime import BaseCoderRuntimeMixin
 from aider.dump import dump  # noqa: F401
 from aider.io import InputOutput
 from aider.models import Model
 from aider.repo import GitRepo
 from aider.sendchat import sanity_check_messages
-from aider.utils import GitTemporaryDirectory
+from aider.utils import ChdirTemporaryDirectory, GitTemporaryDirectory
 
 
 class TestCoder(unittest.TestCase):
@@ -118,6 +122,277 @@ class TestCoder(unittest.TestCase):
         content = coder.get_files_content().splitlines()
         self.assertIn("file1.txt", content)
         self.assertIn("file2.txt", content)
+
+    def test_coder_initialization_wires_core_runtime_state(self):
+        io = InputOutput(pretty=False, yes=True)
+
+        coder = Coder.create(self.GPT35, None, io=io, fnames=[])
+
+        self.assertIsNotNone(coder.chat_history)
+        self.assertIsNotNone(coder.commands)
+        self.assertIsNotNone(coder.linter)
+        self.assertTrue(hasattr(coder, "suggest_shell_commands"))
+        self.assertTrue(hasattr(coder, "detect_urls"))
+
+    def test_coder_default_io_is_propagated_to_runtime(self):
+        coder = Coder.create(self.GPT35, None, io=None, fnames=[])
+
+        self.assertIsNotNone(coder.io)
+        self.assertIs(coder.runtime.io, coder.io)
+        self.assertIs(coder.agent_service.io, coder.io)
+
+    def test_auto_detected_ancestor_repo_without_tracked_files_uses_cwd(self):
+        with ChdirTemporaryDirectory():
+            repo = git.Repo.init()
+            repo.config_writer().set_value("user", "name", "Test User").release()
+            repo.config_writer().set_value("user", "email", "testuser@example.com").release()
+
+            Path("tracked.txt").write_text("tracked")
+            repo.git.add("tracked.txt")
+            repo.git.commit("-m", "init")
+
+            child = Path("scratch")
+            child.mkdir()
+            expected_root = child.resolve()
+            os.chdir(child)
+
+            coder = Coder.create(
+                self.GPT35, None, io=InputOutput(pretty=False, yes=True), fnames=[]
+            )
+
+            self.assertIsNone(coder.repo)
+            self.assertEqual(Path(coder.root), expected_root)
+
+    def test_coder_rebinds_io_on_supplied_runtime(self):
+        from aider.session_runtime import SessionRuntime
+
+        stale_io = InputOutput(pretty=False, yes=True)
+        fresh_io = InputOutput(pretty=False, yes=True)
+        runtime = SessionRuntime.create(io=stale_io)
+
+        coder = Coder.create(self.GPT35, None, io=fresh_io, fnames=[], runtime=runtime)
+
+        self.assertIs(coder.io, fresh_io)
+        self.assertIs(runtime.io, fresh_io)
+        self.assertIs(runtime.agent_service.io, fresh_io)
+        self.assertIs(runtime.agent_service.executor.io, fresh_io)
+
+    def test_coder_rebinds_analytics_on_supplied_runtime(self):
+        from aider.session_runtime import SessionRuntime
+
+        stale_analytics = Analytics(permanently_disable=True)
+        fresh_analytics = Analytics(permanently_disable=True)
+        runtime = SessionRuntime.create(
+            io=InputOutput(pretty=False, yes=True), analytics=stale_analytics
+        )
+
+        coder = Coder.create(
+            self.GPT35,
+            None,
+            io=InputOutput(pretty=False, yes=True),
+            fnames=[],
+            runtime=runtime,
+            analytics=fresh_analytics,
+        )
+
+        self.assertIs(coder.analytics, fresh_analytics)
+        self.assertIs(runtime.analytics, fresh_analytics)
+
+    def test_format_chat_chunks_accounts_for_image_tokens(self):
+        with GitTemporaryDirectory():
+            image_path = Path("vision.png")
+            Image.new("RGB", (1, 1), color="white").save(image_path)
+
+            io = InputOutput(pretty=False, yes=True)
+            coder = Coder.create(self.GPT35, None, io=io, fnames=[image_path])
+            coder.cur_messages = [{"role": "user", "content": "Check the image"}]
+            coder.gpt_prompts.system_reminder = "Remember the image."
+            coder.main_model.info["supports_vision"] = True
+            coder.main_model.info["max_input_tokens"] = 10
+            coder.main_model.reminder = "sys"
+
+            with (
+                patch.object(coder.main_model, "token_count", return_value=1),
+                patch.object(coder.main_model, "token_count_for_image", return_value=100),
+            ):
+                chunks = coder.format_chat_chunks()
+
+            self.assertEqual(chunks.reminder, [])
+            self.assertEqual(chunks.cur[-1]["content"], "Check the image")
+
+    def test_show_exhausted_error_accounts_for_image_tokens(self):
+        with GitTemporaryDirectory():
+            image_path = Path("vision.png")
+            Image.new("RGB", (1, 1), color="white").save(image_path)
+
+            io = InputOutput(pretty=False, yes=True)
+            coder = Coder.create(self.GPT35, None, io=io, fnames=[image_path])
+            coder.cur_messages = [{"role": "user", "content": "Check the image"}]
+            coder.gpt_prompts.system_reminder = ""
+            coder.main_model.info["supports_vision"] = True
+            coder.main_model.info["max_input_tokens"] = 10
+            coder.main_model.info["max_output_tokens"] = 10
+
+            with (
+                patch.object(coder.main_model, "token_count", return_value=1),
+                patch.object(coder.main_model, "token_count_for_image", return_value=100),
+                patch.object(io, "tool_error") as mock_tool_error,
+                patch.object(io, "offer_url"),
+            ):
+                coder.show_exhausted_error()
+
+            message = mock_tool_error.call_args[0][0]
+            self.assertIn("Input tokens: ~101 of 10", message)
+            self.assertIn("Total tokens: ~101 of 10", message)
+
+    def test_send_uses_subclass_final_assistant_output_hook(self):
+        class HookedCoder(Coder):
+            def get_final_assistant_output(self):
+                return "hooked-output"
+
+        io = InputOutput(pretty=False, yes=True)
+        coder = HookedCoder(self.GPT35, io=io, fnames=[])
+        coder.stream = False
+        hash_object = MagicMock()
+        hash_object.hexdigest.return_value = "abc123"
+        completion = MagicMock()
+        model = MagicMock()
+        model.send_completion.return_value = (hash_object, completion)
+
+        with (
+            patch.object(
+                coder,
+                "show_send_output",
+                side_effect=lambda _completion: setattr(
+                    coder,
+                    "partial_response_function_call",
+                    {"arguments": '{"content":"ignored"}'},
+                ),
+            ),
+            patch.object(coder, "calculate_and_show_tokens_and_cost"),
+            patch.object(io, "ai_output") as mock_ai_output,
+        ):
+            list(coder.send([], model=model))
+
+        mock_ai_output.assert_called_once_with("hooked-output")
+
+    def test_runtime_reconfiguration_updates_bound_coder_services(self):
+        from aider.session_runtime import SessionRuntime
+
+        runtime = SessionRuntime.create(io=InputOutput(pretty=False, yes=True))
+        coder = Coder.create(
+            self.GPT35, None, io=InputOutput(pretty=False, yes=True), fnames=[], runtime=runtime
+        )
+        original_registry = coder.agent_registry
+
+        runtime.configure_agents(max_concurrent=9)
+
+        self.assertIs(coder.runtime, runtime)
+        self.assertIs(coder.agent_registry, runtime.agent_registry)
+        self.assertIsNot(coder.agent_registry, original_registry)
+        self.assertEqual(coder.agent_registry.max_concurrent, 9)
+
+    def test_runtime_skill_registry_rebind_updates_bound_coder(self):
+        from aider.session_runtime import SessionRuntime
+
+        runtime = SessionRuntime.create(io=InputOutput(pretty=False, yes=True))
+        coder = Coder.create(
+            self.GPT35, None, io=InputOutput(pretty=False, yes=True), fnames=[], runtime=runtime
+        )
+        new_registry = MagicMock()
+
+        runtime.bind_skill_registry(new_registry)
+
+        self.assertIs(coder.skills_registry, new_registry)
+
+    def test_runtime_hooks_manager_rebind_updates_bound_coder(self):
+        from aider.session_runtime import SessionRuntime
+
+        runtime = SessionRuntime.create(io=InputOutput(pretty=False, yes=True))
+        coder = Coder.create(
+            self.GPT35, None, io=InputOutput(pretty=False, yes=True), fnames=[], runtime=runtime
+        )
+        new_hooks = MagicMock()
+
+        runtime.bind_hooks_manager(new_hooks)
+
+        self.assertIs(coder.hooks_manager, new_hooks)
+        self.assertIs(new_hooks.io, runtime.io)
+
+    def test_runtime_hooks_manager_fallback_uses_bound_hooks_manager(self):
+        class DummyCoder(BaseCoderRuntimeMixin):
+            pass
+
+        dummy = DummyCoder()
+        dummy.runtime = SimpleNamespace(hooks_manager=None)
+        dummy.hooks_manager = MagicMock()
+
+        with patch("aider.hooks.get_hooks_manager", side_effect=AssertionError):
+            self.assertIs(dummy._get_hooks_manager(), dummy.hooks_manager)
+
+    def test_runtime_analytics_rebind_updates_bound_coder(self):
+        from aider.session_runtime import SessionRuntime
+
+        runtime = SessionRuntime.create(io=InputOutput(pretty=False, yes=True))
+        coder = Coder.create(
+            self.GPT35, None, io=InputOutput(pretty=False, yes=True), fnames=[], runtime=runtime
+        )
+        new_analytics = Analytics(permanently_disable=True)
+
+        runtime.bind_analytics(new_analytics)
+
+        self.assertIs(coder.analytics, new_analytics)
+        self.assertIs(coder.event.__self__, new_analytics)
+
+    def test_runtime_io_rebind_updates_bound_coder(self):
+        from aider.session_runtime import SessionRuntime
+
+        runtime = SessionRuntime.create(io=InputOutput(pretty=False, yes=True))
+        coder = Coder.create(
+            self.GPT35, None, io=InputOutput(pretty=False, yes=True), fnames=[], runtime=runtime
+        )
+        new_io = InputOutput(pretty=False, yes=True)
+
+        runtime.bind_io(new_io)
+
+        self.assertIs(coder.io, new_io)
+        self.assertIs(coder.commands.io, new_io)
+
+    def test_runtime_io_rebind_updates_cached_command_helpers(self):
+        from aider.a2a.commands import A2ACommands
+        from aider.agents.commands import AgentCommands
+        from aider.session_runtime import SessionRuntime
+
+        runtime = SessionRuntime.create(io=InputOutput(pretty=False, yes=True))
+        coder = Coder.create(
+            self.GPT35, None, io=InputOutput(pretty=False, yes=True), fnames=[], runtime=runtime
+        )
+        coder.commands._agent_commands = AgentCommands(coder.commands)
+        coder.commands._a2a_commands = A2ACommands(coder.commands)
+
+        new_io = InputOutput(pretty=False, yes=True)
+        runtime.bind_io(new_io)
+
+        self.assertIs(coder.commands._agent_commands.io, new_io)
+        self.assertIs(coder.commands._a2a_commands.io, new_io)
+
+    def test_runtime_io_rebind_updates_tool_router(self):
+        from aider.session_runtime import SessionRuntime
+
+        runtime = SessionRuntime.create(io=InputOutput(pretty=False, yes=True))
+        coder = Coder.create(
+            self.GPT35, None, io=InputOutput(pretty=False, yes=True), fnames=[], runtime=runtime
+        )
+        tool_router = MagicMock()
+        coder.tool_router = tool_router
+        old_commands = coder.commands
+
+        new_io = InputOutput(pretty=False, yes=True)
+        runtime.bind_io(new_io)
+
+        self.assertIs(coder.tool_router.io, new_io)
+        self.assertIs(coder.tool_router.commands, old_commands)
+        self.assertIs(coder.tool_router.coder, coder)
 
     def test_check_for_filename_mentions(self):
         with GitTemporaryDirectory():
@@ -971,6 +1246,16 @@ two
             # Check that the abs_fnames do not contain duplicate or incorrect paths
             self.assertEqual(len(coder1.abs_fnames), 1)
             self.assertEqual(len(coder2.abs_fnames), 1)
+
+    def test_coder_from_coder_preserves_runtime(self):
+        io = InputOutput(yes=True)
+        coder1 = Coder.create(self.GPT35, None, io=io, fnames=[])
+
+        coder2 = Coder.create(from_coder=coder1)
+
+        self.assertIs(coder2.runtime, coder1.runtime)
+        self.assertIs(coder2.analytics, coder1.analytics)
+        self.assertIs(coder2.commands.runtime, coder1.runtime)
 
     def test_suggest_shell_commands(self):
         with GitTemporaryDirectory():

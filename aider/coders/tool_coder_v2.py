@@ -335,18 +335,22 @@ Tools execute automatically when safe. Destructive operations require confirmati
         from ..tools.schema import ToolSchemaGenerator
 
         # Check if using OpenClaw - use base send_completion for proper routing
-        if getattr(self.main_model, '_use_openclaw_model', lambda: False)():
+        if getattr(self.main_model, "_use_openclaw_model", lambda: False)():
             # OpenClaw models need special handling - use parent's send_completion
             # which properly routes through OpenClawModel
             import hashlib
-            key = json.dumps({
-                "model": self.main_model.name,
-                "messages": messages,
-                "tools": True,
-                "temperature": self.temperature,
-            }, sort_keys=True).encode()
+
+            key = json.dumps(
+                {
+                    "model": self.main_model.name,
+                    "messages": messages,
+                    "tools": True,
+                    "temperature": self.temperature,
+                },
+                sort_keys=True,
+            ).encode()
             hash_object = hashlib.sha1(key)
-            
+
             # Build functions dict from tools for send_completion compatibility
             tools = ToolSchemaGenerator.generate_all(self)
             if tools:
@@ -444,8 +448,12 @@ Tools execute automatically when safe. Destructive operations require confirmati
         if not content:
             return None
 
+        # BaseCoder.apply_updates() reads from partial_response_content rather than
+        # accepting response text as an argument.
+        self.partial_response_content = content
+
         # Apply edits if any
-        edited = self.apply_updates(content)
+        edited = self.apply_updates()
         if edited:
             self.aider_edited_files.update(self.get_edited_files())
 

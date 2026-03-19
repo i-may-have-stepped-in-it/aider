@@ -249,11 +249,13 @@ class ToolRouterV2:
         io: "InputOutput",
         coder: "Coder",
         config: Optional[RouterConfig] = None,
+        runtime=None,
     ):
         self.commands = commands
         self.io = io
         self.coder = coder
         self.config = config or RouterConfig()
+        self.runtime = runtime or getattr(coder, "runtime", None)
 
         # Core infrastructure - initialized once, reused for all executions
         self._init_infrastructure()
@@ -278,33 +280,56 @@ class ToolRouterV2:
 
     def _init_infrastructure(self) -> None:
         """Initialize core infrastructure components."""
-        # AsyncExecutor: Bridges sync and async without nested event loops
-        # This is the KEY fix for the v1 nested asyncio.run() bug
-        self.async_executor = AsyncExecutor()
+        shared_services = None
+        if (
+            self.runtime
+            and getattr(self.runtime, "is_session_runtime", False) is True
+            and hasattr(self.runtime, "get_tool_services")
+        ):
+            try:
+                shared_services = self.runtime.get_tool_services()
+            except Exception as e:
+                logger.debug(f"Failed to load shared runtime tool services: {e}")
+
+        if shared_services:
+            self.async_executor = shared_services.async_executor
+            self.compressor = shared_services.compressor
+            self.openclaw_client = shared_services.openclaw_client
+            self.mcp_manager = shared_services.mcp_manager
+            self.terminal_watcher = shared_services.terminal_watcher
+            self.resilient_executor = shared_services.resilient_executor
+        else:
+            # AsyncExecutor: Bridges sync and async without nested event loops
+            # This is the KEY fix for the v1 nested asyncio.run() bug
+            self.async_executor = AsyncExecutor()
+
+            # SmartCompressor: Semantic output compression (not naive truncation)
+            self.compressor = SmartCompressor()
+
+            # OpenClawToolClient: Remote tool execution
+            self.openclaw_client = OpenClawToolClient()
+
+            # MCPManager: Support for external MCP servers
+            self.mcp_manager = MCPManager()
+
+            # TerminalWatcher: Real-time background process monitoring
+            self.terminal_watcher = TerminalWatcher()
+
+            # ResilientExecutor: Circuit breakers, retries, rate limiting
+            self.resilient_executor = ResilientExecutor(
+                circuit_breaker=CircuitBreakers.tool_execution(),
+                rate_limiter=RateLimiters.aggressive(),
+                backoff=BackoffStrategies.standard(),
+            )
 
         # Sandbox: Isolated execution environment
         self.sandbox = create_sandbox(self.config.sandbox_type)
 
-        # SmartCompressor: Semantic output compression (not naive truncation)
-        self.compressor = SmartCompressor()
-
         # AccurateCostTracker: Precise cost tracking for budget management
-        self.cost_tracker = AccurateCostTracker(max_budget=self.config.max_cost)
-
-        # OpenClawToolClient: Remote tool execution
-        self.openclaw_client = OpenClawToolClient()
-
-        # MCPManager: Support for external MCP servers
-        self.mcp_manager = MCPManager()
-
-        # TerminalWatcher: Real-time background process monitoring
-        self.terminal_watcher = TerminalWatcher()
-
-        # ResilientExecutor: Circuit breakers, retries, rate limiting
-        self.resilient_executor = ResilientExecutor(
-            circuit_breaker=CircuitBreakers.tool_execution(),
-            rate_limiter=RateLimiters.aggressive(),
-            backoff=BackoffStrategies.standard(),
+        self.cost_tracker = AccurateCostTracker(
+            max_budget=self.config.max_cost,
+            hooks=getattr(self.runtime, "hooks_manager", None)
+            or getattr(self.coder, "hooks_manager", None),
         )
 
     def _init_tool_registry(self) -> None:
@@ -346,6 +371,27 @@ class ToolRouterV2:
             "lint": self._exec_lint,
         }
 
+    def _trigger_ui_tool(self, tool_name: str, message: str, progress: float = None):
+        """Notify UI of tool execution progress."""
+        hooks_manager = getattr(self.runtime, "hooks_manager", None) or getattr(
+            self.coder, "hooks_manager", None
+        )
+        if hooks_manager:
+            from aider.hooks_manager import HookPoint
+
+            try:
+                context = {
+                    "tool_name": tool_name,
+                    "message": message,
+                    "progress": progress,
+                }
+                if hasattr(hooks_manager, "execute_hooks"):
+                    hooks_manager.execute_hooks(HookPoint.UI_TOOL_PROGRESS, context)
+                else:
+                    hooks_manager.trigger(HookPoint.UI_TOOL_PROGRESS, **context)
+            except Exception as e:
+                logger.debug(f"Error triggering UI_TOOL_PROGRESS hook: {e}")
+
     def execute(self, tool_name: str, params: dict) -> ToolExecutionResult:
         """
         Execute tool with full resilience and observability.
@@ -372,6 +418,7 @@ class ToolRouterV2:
         """
         start_time = time.time()
         self.tool_call_count += 1
+        self._trigger_ui_tool(tool_name, "executing")
 
         # Layer 1: Check limits before doing any work
         limit_error = self._check_limits(tool_name)
@@ -417,26 +464,17 @@ class ToolRouterV2:
 
         # Check if tool exists in local registry
         if tool_name not in self._tools:
-            # Fallback for upstream tools (Skill Awareness)
-            # If the tool isn't local, try executing it as an upstream tool
-            try:
-                result = self._exec_upstream_tool(tool_name, params)
-                self._log_result(result)
-                self.execution_history.append(result)
-                return result
-            except Exception as e:
-                logger.error(f"Upstream tool execution failed for {tool_name}: {e}")
-                result = ToolExecutionResult(
-                    tool_name=tool_name,
-                    parameters=params,
-                    success=False,
-                    output="",
-                    error=f"Unknown tool and upstream execution failed: {tool_name}",
-                    start_time=start_time,
-                    end_time=time.time(),
-                )
-                self._log_result(result)
-                return result
+            result = ToolExecutionResult(
+                tool_name=tool_name,
+                parameters=params,
+                success=False,
+                output="",
+                error=f"Unknown tool: {tool_name}",
+                start_time=start_time,
+                end_time=time.time(),
+            )
+            self._log_result(result)
+            return result
 
         # Layer 2-4: Execute with full resilience
         try:
@@ -458,6 +496,12 @@ class ToolRouterV2:
         # Always log and record the result
         self._log_result(result)
         self.execution_history.append(result)
+
+        # Trigger UI update
+        if result.success:
+            self._trigger_ui_tool(tool_name, "complete")
+        else:
+            self._trigger_ui_tool(tool_name, "failed")
 
         return result
 
@@ -1019,9 +1063,21 @@ class ToolRouterV2:
 
         try:
             # Import here to avoid circular dependencies
-            from aider.agents.executor import AgentExecutor
+            runtime = getattr(self.coder, "runtime", None)
+            if runtime and getattr(runtime, "agent_service", None):
+                registry = runtime.agent_service.registry
+                executor = runtime.agent_service.executor
+                self.coder.agent_registry = registry
+            else:
+                from aider.agents.executor import AgentExecutor
+                from aider.agents.registry import AgentRegistry
 
-            executor = AgentExecutor(self.coder)
+                registry = getattr(self.coder, "agent_registry", None)
+                if registry is None:
+                    registry = AgentRegistry()
+                    self.coder.agent_registry = registry
+
+                executor = AgentExecutor(registry, self.io)
             current_depth = getattr(self.coder, "delegation_depth", 0) + 1
 
             if decompose:
@@ -1029,11 +1085,11 @@ class ToolRouterV2:
 
                 decomposer = TaskDecomposer(self.coder)
                 # Decompose mission into subtasks
-                subtasks = self.async_executor.run_sync(decomposer.decompose(mission_prompt))
+                subtasks = self.async_executor.run(decomposer.decompose(mission_prompt))
 
                 if subtasks:
                     # Run parallel sub-missions
-                    results = self.async_executor.run_sync(
+                    results = self.async_executor.run(
                         executor.spawn_parallel(
                             parent_coder=self.coder,
                             subtasks=subtasks,
@@ -1062,7 +1118,7 @@ class ToolRouterV2:
 
             # Standard single delegation (fallback or if decompose=False)
             self.io.tool_output(f"Delegating mission to specialized agent [{agent_name}]...")
-            result = self.async_executor.run_sync(
+            result = self.async_executor.run(
                 executor.spawn_and_run(
                     parent_coder=self.coder,
                     task=mission_prompt,
@@ -1671,13 +1727,6 @@ class ToolRouterV2:
         logger.debug("ToolRouterV2 cleanup started")
 
         # Clean up async executor
-        try:
-            if hasattr(self, "async_executor") and self.async_executor:
-                self.async_executor.shutdown()
-        except Exception as e:
-            logger.warning(f"Error shutting down AsyncExecutor: {e}")
-
-        # Clean up sandbox
         try:
             if hasattr(self, "sandbox") and self.sandbox:
                 self.sandbox.cleanup()

@@ -92,6 +92,9 @@ class EditBlockFunctionCoder(Coder):
         res = json.dumps(args, indent=4)
         return res
 
+    def get_final_assistant_output(self):
+        return self.render_incremental_response(final=True)
+
     def _update_files(self):
         name = self.partial_response_function_call.get("name")
 

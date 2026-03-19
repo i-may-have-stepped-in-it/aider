@@ -5,10 +5,10 @@ This module provides automatic dependency analysis and graph building from plans
 Enables agents to understand task dependencies and execute in correct order.
 """
 
-import re
-from typing import Dict, List, Set, Tuple, Optional
-from dataclasses import dataclass
 import logging
+import re
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DependencyNode:
     """Represents a node in the dependency graph."""
+
     task_id: str
     description: str
     dependencies: List[str]
@@ -45,13 +46,13 @@ class DependencyAnalyzer:
             "blocked by",
             "waiting for",
             "must complete first",
-            "prerequisite"
+            "prerequisite",
         ]
 
         # Task boundary patterns
         self.task_patterns = [
             r"^\d+\.\s+(.+)$",  # Numbered lists
-            r"^[-*]\s+(.+)$",   # Bullet lists
+            r"^[-*]\s+(.+)$",  # Bullet lists
             r"^(.+?):\s+(.+)$",  # Key-value pairs
         ]
 
@@ -87,7 +88,7 @@ class DependencyAnalyzer:
             Dictionary of task_id -> task_info
         """
         tasks = {}
-        lines = plan.split('\n')
+        lines = plan.split("\n")
         current_task_id = 0
 
         for line in lines:
@@ -114,7 +115,7 @@ class DependencyAnalyzer:
                     tasks[task_id] = {
                         "title": title,
                         "description": description,
-                        "dependencies": []
+                        "dependencies": [],
                     }
                     break
 
@@ -138,7 +139,7 @@ class DependencyAnalyzer:
                 task_id=task_id,
                 description=task_info["description"],
                 dependencies=[],
-                dependents=[]
+                dependents=[],
             )
 
         # Find dependencies
@@ -250,10 +251,7 @@ class DependencyAnalyzer:
             return []
 
         # Find tasks with no dependents (end points)
-        end_points = [
-            task_id for task_id, node in graph.items()
-            if not node.dependents
-        ]
+        end_points = [task_id for task_id, node in graph.items() if not node.dependents]
 
         if not end_points:
             return []
@@ -368,7 +366,7 @@ class DependencyResolutionIntegration:
             "execution_order": execution_order,
             "critical_path": critical_path,
             "is_valid": is_valid,
-            "errors": errors
+            "errors": errors,
         }
 
     def get_parallel_tasks(self, plan: str) -> List[List[str]]:

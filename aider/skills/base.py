@@ -5,44 +5,19 @@ Base classes for Aider skills with multi-agent support.
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+from aider.async_utils import run_async_safely
 
 if TYPE_CHECKING:
     from aider.coders.base_coder import Coder
     from aider.io import InputOutput
 
 
-def _run_async_safely(coro, timeout=30.0):
-    """
-    Safely run an async coroutine from synchronous code.
-
-    Handles both cases:
-    - No event loop running: uses asyncio.run()
-    - Event loop already running: uses ThreadPoolExecutor with new event loop
-    """
-    try:
-        # Check if we're already in an event loop
-        asyncio.get_running_loop()
-
-        # Already in async context - run in separate thread with new loop
-        def run_in_new_loop():
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            try:
-                return new_loop.run_until_complete(coro)
-            finally:
-                new_loop.close()
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(run_in_new_loop)
-            return future.result(timeout=timeout)
-    except RuntimeError:
-        # No event loop running - safe to use asyncio.run
-        return asyncio.run(coro)
+_run_async_safely = run_async_safely
 
 
 @dataclass
@@ -86,9 +61,16 @@ class SkillContext:
     timeout: float = 0.0  # 0 means no timeout
     _cancelled: bool = field(default=False, repr=False)
 
-    def is_cancelled(self) -> bool:
+    def is_cancelled(self):
         """Check if execution has been cancelled."""
-        return self._cancelled
+        # Check internal cancelled flag
+        if self._cancelled:
+            return True
+        # Check cancellation token if set (for async cancellation)
+        cancellation_token = getattr(self, "cancellation_token", None)
+        if cancellation_token and cancellation_token.is_set():
+            return True
+        return False
 
     def cancel(self):
         """Mark execution as cancelled."""
@@ -322,6 +304,10 @@ class Skill(ABC):
         if not self.context.enable_agents:
             return None
 
+        runtime = getattr(getattr(self.context, "coder", None), "runtime", None)
+        if runtime and getattr(runtime, "agent_service", None):
+            return runtime.agent_service.registry
+
         # Lazy import to avoid circular dependencies
         from ..agents.registry import AgentRegistry
 
@@ -331,6 +317,10 @@ class Skill(ABC):
         """Get an agent executor for the given registry."""
         if not self.context.coder:
             raise RuntimeError("Cannot create agent executor without a coder")
+
+        runtime = getattr(self.context.coder, "runtime", None)
+        if runtime and getattr(runtime, "agent_service", None):
+            return runtime.agent_service.executor
 
         from ..agents.executor import AgentExecutor
 

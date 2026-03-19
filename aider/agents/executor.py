@@ -156,6 +156,25 @@ class AgentExecutor:
 
         return final_results
 
+    def _trigger_ui_agent(self, agent: SubAgent, status: str = None):
+        """Notify UI of sub-agent heartbeat."""
+        if self.io and hasattr(self.io, "hooks_manager") and self.io.hooks_manager:
+            from aider.hooks_manager import HookPoint
+
+            try:
+                self.io.hooks_manager.trigger(
+                    HookPoint.UI_AGENT_HEARTBEAT,
+                    agent_id=agent.id,
+                    status=(
+                        status or agent.status.name
+                        if hasattr(agent.status, "name")
+                        else str(agent.status)
+                    ),
+                    task=agent.task,
+                )
+            except Exception as e:
+                logger.debug(f"Error triggering UI_AGENT_HEARTBEAT hook: {e}")
+
     async def _run_agent(
         self,
         agent: SubAgent,
@@ -169,11 +188,13 @@ class AgentExecutor:
         async with self.registry.acquire_slot():
             agent.status = AgentStatus.RUNNING
             agent.started_at = time.time()
+            self._trigger_ui_agent(agent)
 
             try:
                 # Start A2A agent inside try so stop() runs even if start() fails
                 if isinstance(agent, A2AEnabledAgent):
                     await agent.start()  # Starts handshake
+                    self._trigger_ui_agent(agent, "HANDSHAKE")
 
                 # CLI agents short-circuit the litellm backend entirely
                 if is_cli_model(agent.model or ""):
@@ -185,6 +206,7 @@ class AgentExecutor:
 
                     # Run the task
                     agent.update_progress("Starting task execution...")
+                    self._trigger_ui_agent(agent, "EXECUTING")
 
                     # Execute task in the sub-coder
                     result = await self._execute_task(sub_coder, agent.task)
@@ -192,10 +214,12 @@ class AgentExecutor:
                 agent.result = result
                 agent.status = AgentStatus.COMPLETED if result.success else AgentStatus.ERROR
                 agent.error = result.error
+                self._trigger_ui_agent(agent)
 
             except asyncio.CancelledError:
                 agent.status = AgentStatus.CANCELLED
                 agent.error = "Agent was cancelled"
+                self._trigger_ui_agent(agent)
                 raise
 
             except Exception as e:
@@ -266,12 +290,14 @@ class AgentExecutor:
 
         # Create coder with isolated context
         # Handle different coder types - AskCoder doesn't have map_tokens
-        map_tokens = getattr(parent_coder, 'map_tokens', 1024)
-        edit_format = getattr(agent, 'edit_format', None) or getattr(parent_coder, 'edit_format', 'diff')
-        repo = getattr(parent_coder, 'repo', None)
-        verbose = getattr(parent_coder, 'verbose', False)
-        system_prompt = getattr(parent_coder, 'system_prompt_override', None)
-        
+        map_tokens = getattr(parent_coder, "map_tokens", 1024)
+        edit_format = getattr(agent, "edit_format", None) or getattr(
+            parent_coder, "edit_format", "diff"
+        )
+        repo = getattr(parent_coder, "repo", None)
+        verbose = getattr(parent_coder, "verbose", False)
+        system_prompt = getattr(parent_coder, "system_prompt_override", None)
+
         sub_coder = coder_class.create(
             main_model=model,
             edit_format=edit_format,

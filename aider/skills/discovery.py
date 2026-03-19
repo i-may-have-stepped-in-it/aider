@@ -9,22 +9,39 @@ Auto-discovers skills from:
 No registry.py edits needed!
 """
 
-import importlib
-import inspect
+import ast
+import logging
 import pkgutil
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
 
 from .base import Skill
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SkillDescriptor:
+    """Metadata and lazy-loading information for a skill."""
+
+    name: str
+    description: str = ""
+    version: str = "1.0.0"
+    supports_agents: bool = False
+    max_agents: int = 0
+    source: str = "python"
+    module_name: Optional[str] = None
+    class_name: Optional[str] = None
+    skill_class: Optional[type] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 def discover_python_skills():
     """
-    Auto-discover Python skill classes from the skills package.
+    Auto-discover Python skill metadata from the skills package.
 
-    Finds all classes that inherit from Skill in aider/skills/*.py
-
-    Note: Classes with property-based names (like DynamicACPAgentSkill,
-    YAMLDefinedSkill) are skipped here and discovered through their
-    specialized loaders instead.
+    This avoids importing every module during discovery. Skills are resolved
+    lazily by the registry when they are instantiated or explicitly inspected.
     """
     skills = {}
 
@@ -35,29 +52,86 @@ def discover_python_skills():
     for importer, modname, ispkg in pkgutil.iter_modules(
         __import__(skills_pkg, fromlist=[""]).__path__, skills_pkg + "."
     ):
+        if ispkg or modname.rsplit(".", 1)[-1].startswith("_"):
+            continue
         try:
-            # Import the module
-            module = importlib.import_module(modname)
+            spec = importer.find_spec(modname)
+            if not spec or not spec.origin or not spec.origin.endswith(".py"):
+                continue
 
-            # Find all Skill subclasses
-            for name, obj in inspect.getmembers(module, inspect.isclass):
-                if issubclass(obj, Skill) and obj is not Skill and hasattr(obj, "name"):
-                    # Skip classes with property-based names (handled by specialized loaders)
-                    name_attr = getattr(type(obj), "name", None)
-                    if isinstance(name_attr, property):
-                        continue
+            with open(spec.origin, "r", encoding="utf-8") as handle:
+                module_ast = ast.parse(handle.read(), filename=spec.origin)
 
-                    # Skip if name is not a string or is empty
-                    if not isinstance(obj.name, str) or not obj.name:
-                        continue
+            for node in module_ast.body:
+                if not isinstance(node, ast.ClassDef):
+                    continue
 
-                    skills[obj.name] = obj
+                class_meta = _extract_skill_metadata(node)
+                if not class_meta or not class_meta["name"]:
+                    continue
+
+                skills[class_meta["name"]] = SkillDescriptor(
+                    name=class_meta["name"],
+                    description=class_meta["description"],
+                    version=class_meta["version"],
+                    supports_agents=class_meta["supports_agents"],
+                    max_agents=class_meta["max_agents"],
+                    source="python",
+                    module_name=modname,
+                    class_name=node.name,
+                )
 
         except Exception as e:
             # Log but don't fail - broken modules shouldn't stop discovery
-            print(f"Warning: Could not load skill from {modname}: {e}")
+            logger.warning("Could not load skill from %s: %s", modname, e)
 
     return skills
+
+
+def _extract_skill_metadata(node: ast.ClassDef) -> Optional[Dict[str, Any]]:
+    """Extract static metadata from a class definition if it looks like a skill."""
+    if not _looks_like_skill_class(node):
+        return None
+
+    values = {
+        "name": None,
+        "description": "",
+        "version": "1.0.0",
+        "supports_agents": False,
+        "max_agents": 0,
+    }
+
+    for stmt in node.body:
+        if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
+            continue
+        target = stmt.targets[0]
+        if not isinstance(target, ast.Name) or target.id not in values:
+            continue
+        constant = _literal_value(stmt.value)
+        if constant is not None:
+            values[target.id] = constant
+
+    if not isinstance(values["name"], str) or not values["name"]:
+        return None
+
+    return values
+
+
+def _looks_like_skill_class(node: ast.ClassDef) -> bool:
+    """Require a plausible Skill inheritance chain before discovery."""
+    for base in node.bases:
+        if isinstance(base, ast.Name) and base.id.endswith("Skill"):
+            return True
+        if isinstance(base, ast.Attribute) and base.attr.endswith("Skill"):
+            return True
+    return False
+
+
+def _literal_value(node: ast.AST):
+    """Return a safe literal value from an AST node or None."""
+    if isinstance(node, ast.Constant):
+        return node.value
+    return None
 
 
 def discover_yaml_skills():
@@ -65,9 +139,9 @@ def discover_yaml_skills():
     from .yaml_loader import YAMLSkillLoader
 
     loader = YAMLSkillLoader()
-    skill_classes = loader.load_skills()
+    skill_descriptors = loader.load_skill_descriptors()
 
-    return {skill_class.name: skill_class for skill_class in skill_classes}
+    return {descriptor.name: descriptor for descriptor in skill_descriptors}
 
 
 def discover_acp_skills():
@@ -75,9 +149,56 @@ def discover_acp_skills():
     from .dynamic_loader import DynamicSkillLoader
 
     loader = DynamicSkillLoader()
-    skill_classes = loader.load_acp_agents()
+    skill_descriptors = loader.load_acp_agent_descriptors()
 
-    return {skill_class.name: skill_class for skill_class in skill_classes}
+    return {descriptor.name: descriptor for descriptor in skill_descriptors}
+
+
+def discover_openclaw_skills():
+    """Discover OpenClaw bridge skills and expose them as shared skill descriptors."""
+    from aider.openclaw_bridge import OpenClawBridge
+
+    from .openclaw_adapter import create_openclaw_skill_class
+
+    bridge = OpenClawBridge()
+    descriptors = {}
+
+    try:
+        for metadata in bridge.list_skills():
+            skill_class = create_openclaw_skill_class(metadata.name, metadata, bridge=bridge)
+            descriptors[metadata.name] = SkillDescriptor(
+                name=metadata.name,
+                description=metadata.description,
+                version="openclaw",
+                supports_agents=False,
+                max_agents=0,
+                source="openclaw",
+                skill_class=skill_class,
+                metadata={
+                    "homepage": metadata.homepage,
+                    "requires": metadata.requires,
+                    "install": metadata.install,
+                    "emoji": metadata.emoji,
+                },
+            )
+    except Exception as e:
+        logger.warning("Could not load OpenClaw skills: %s", e)
+
+    return descriptors
+
+
+def _merge_skill_sources(skills, discovered, source_name):
+    """Merge discovered skills without silently overwriting previous sources."""
+    for name, descriptor in discovered.items():
+        if name in skills:
+            logger.warning(
+                "Duplicate skill name '%s' from %s ignored; keeping existing source '%s'",
+                name,
+                source_name,
+                getattr(skills[name], "source", "unknown"),
+            )
+            continue
+        skills[name] = descriptor
 
 
 def discover_all_skills():
@@ -85,15 +206,15 @@ def discover_all_skills():
     skills = {}
 
     # 1. Discover Python skills (from aider/skills/*.py)
-    python_skills = discover_python_skills()
-    skills.update(python_skills)
+    _merge_skill_sources(skills, discover_python_skills(), "python")
 
     # 2. Discover ACP agent skills (from ~/.acpx/config.json)
-    acp_skills = discover_acp_skills()
-    skills.update(acp_skills)
+    _merge_skill_sources(skills, discover_acp_skills(), "acp")
 
     # 3. Discover YAML skills (from ~/.config/aider/skills/*.yaml)
-    yaml_skills = discover_yaml_skills()
-    skills.update(yaml_skills)
+    _merge_skill_sources(skills, discover_yaml_skills(), "yaml")
+
+    # 4. Discover OpenClaw bridge skills
+    _merge_skill_sources(skills, discover_openclaw_skills(), "openclaw")
 
     return skills
