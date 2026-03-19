@@ -71,9 +71,13 @@ Skills automatically discovered from:
 ### New Infrastructure Modules
 
 - `aider/audit/` - Audit logging and compliance
+  - `manager.py` - `AuditManager`, `SessionTraceability`, `AuditEvent`
 - `aider/security/` - Security hardening
+  - `policy.py` - `SecurityRule`, `SecretScannerRule`, `CommandInjectionRule`, `PolicyResult`
 - `aider/memory/` - Memory management
+  - `vector_store.py` - `VectorStore` for numpy-based semantic search
 - `aider/lsp/` - Language Server Protocol client
+  - `client.py` - `LSPClient` for language server integration
 
 This document summarizes all extensions and modifications made to the original Aider codebase.
 

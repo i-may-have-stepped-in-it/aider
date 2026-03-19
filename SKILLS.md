@@ -213,13 +213,19 @@ aider/skills/
 ├── registry.py          # SkillRegistry (auto-discovery)
 ├── discovery.py         # Dynamic skill discovery
 ├── command.py           # /skill command integration
+├── skill_command.py     # Backwards-compatible shim
 ├── code_review.py       # Code review skills
 ├── test_generation.py   # Test generation skills
 ├── refactoring.py       # Refactoring skills
 ├── documentation.py     # Documentation skills
 ├── dynamic_loader.py    # ACP agent skill loader
 ├── yaml_loader.py       # YAML skill loader
-└── openclaw_adapter.py  # OpenClaw skill adapter
+├── openclaw_adapter.py  # OpenClaw skill adapter
+├── acp_delegation.py    # ACP agent delegation (Claude, Codex)
+├── web_delegation.py    # Web search/scraping delegation
+├── swarm.py             # Swarm-based agent coordination
+├── skill_creator.py     # Meta-skill for creating new skills
+└── preview.py           # Artifact preview (Mermaid, HTML, SVG)
 ```
 
 ### Class Hierarchy

@@ -63,10 +63,12 @@ aider/
 ├── security/                 # Security hardening
 ├── memory/                   # Memory management
 ├── lsp/                      # Language Server Protocol client
+├── gui/                      # GUI components (dashboard, diff viewer, hints)
 ├── editor_protocol/          # Editor/IDE integration
 ├── indexers/                 # Semantic code indexing
 ├── repo.py                   # Git repository integration
 ├── io.py                     # Input/Output handling
+├── io_interfaces.py          # UI observer interfaces (decoupled architecture)
 └── ...
 ```
 
@@ -89,6 +91,7 @@ Each coder has an associated prompts file (e.g., `editblock_prompts.py`).
 
 The bootstrap module provides clean initialization without monkeypatching:
 
+- **launch.py** - Launch/bootstrap helpers (arg parsing, git setup, config loading)
 - **runtime.py** - Service attachment (file watching, clipboard, hooks)
 - **session.py** - Coder and command creation with dependency injection
 - **gui.py** - GUI initialization
@@ -97,6 +100,7 @@ Key features:
 - No monkeypatching - clean dependency injection
 - `SessionRuntime` container for shared services
 - Explicit service wiring via `attach_runtime_services()`
+- Centralized launch logic extracted from `main.py`
 
 ### Session Runtime (`session_runtime.py`)
 
@@ -160,6 +164,11 @@ The agents module enables parallel task execution with sub-agents:
 - **registry.py** - Agent registration with circuit breaker and A2A bus integration
 - **loop.py** - Agent coordination loop (`AutonomousAgent`)
 - **gateway.py** - Gateway for agent communication
+- **governor.py** - Mission governor for safety limits (cost, turns, depth)
+- **decomposition.py** - Task decomposer for breaking down complex tasks
+- **dependency_resolver.py** - Automatic dependency analysis and graph building
+- **task_board.py** - File-locked task board for multi-agent coordination
+- **split_pane_display.py** - Multi-pane terminal display (tmux/iTerm2)
 - **commands.py** - `/agent` CLI commands
 - **integration.py** - Integration with main coder
 
@@ -170,6 +179,15 @@ Key features:
 - Concurrent execution with semaphore control
 - Agent lifecycle management (PENDING → RUNNING → COMPLETED/ERROR)
 
+#### Specialized Agent Prompts
+
+The autonomous workflow uses specialized prompts for different agent roles:
+
+- **librarian_prompts.py** - `LibrarianPrompts` - File discovery and context gathering
+- **architect_prompts.py** - `ArchitectPrompts` - Planning and solution design  
+- **reviewer_prompts.py** - `ReviewerPrompts` - Plan validation and flaw detection
+- **investigator_prompts.py** - `InvestigatorPrompts` - Deep codebase investigation
+
 ### Skills System (`skills/`)
 
 Skills are reusable, composable capabilities with **auto-discovery**:
@@ -179,9 +197,15 @@ Skills are reusable, composable capabilities with **auto-discovery**:
 - **registry.py** - Auto-discovering skill registry (no manual imports needed)
 - **discovery.py** - Dynamic skill discovery from filesystem
 - **command.py** - `/skill` CLI command integration
+- **skill_command.py** - Backwards-compatible shim for OpenClaw /skill command
 - **dynamic_loader.py** - Dynamic ACP agent skill loading
 - **yaml_loader.py** - YAML-defined skill loading
 - **openclaw_adapter.py** - OpenClaw skill adapter
+- **acp_delegation.py** - ACP agent delegation (Claude, Codex, etc.)
+- **web_delegation.py** - Web search/scraping delegation to OpenClaw
+- **swarm.py** - Swarm-based multi-agent coordination
+- **skill_creator.py** - Meta-skill for creating new skills
+- **preview.py** - Artifact preview (Mermaid, HTML, SVG)
 
 #### Auto-Discovery
 
@@ -285,6 +309,7 @@ The tool system is located in `tools_v2/` and provides production-grade tool exe
 | **MCPManager** | `mcp_manager.py` | MCP client integration |
 | **TerminalWatcher** | `terminal_watcher.py` | Terminal output monitoring |
 | **WebSearch** | `search_web.py` | Web search capabilities |
+| **OpenClawClient** | `openclaw_client.py` | OpenResponses API client for tool delegation |
 
 Key features:
 - No nested `asyncio.run()` calls (singleton thread pool)
@@ -320,35 +345,38 @@ Features:
 
 ### Security Module (`security/`)
 
-Security hardening and vulnerability scanning:
+Enterprise-grade security policy engine:
 
-- Policy enforcement
-- Secure defaults
-- Vulnerability detection
+- **policy.py** - Security policy engine with rule-based scanning
+  - `SecretScannerRule` - Detects API keys, passwords, tokens
+  - `CommandInjectionRule` - Detects shell injection patterns
+  - `PathTraversalRule` - Detects directory traversal attempts
+  - `PolicyResult` - Consolidated scan results
 
 ### Audit Module (`audit/`)
 
-Audit logging and compliance:
+Enterprise audit and compliance tracking:
 
-- Operation logging
-- Change tracking
-- Compliance reporting
+- **manager.py** - Session audit and compliance manager
+  - `AuditEvent` - Single event in session lifecycle
+  - `SessionTraceability` - Complete traceability matrix
+  - `AuditManager` - Manages audit logs and compliance reports
 
 ### Memory Module (`memory/`)
 
-Memory management and optimization:
+Lightweight vector store for local RAG:
 
-- Context window optimization
-- Memory pressure handling
-- Token usage tracking
+- **vector_store.py** - Numpy-based vector store for semantic search
+  - `VectorStore` - Cosine similarity search with litellm embeddings
+  - Persistent project memory without heavy dependencies
 
 ### LSP Client (`lsp/`)
 
 Language Server Protocol client:
 
-- IDE integration
-- Symbol navigation
-- Diagnostics
+- **client.py** - Asynchronous LSP client using JSON-RPC
+  - `LSPClient` - Interacts with language servers (pyright, gopls, rust-analyzer)
+  - Provides semantic understanding of codebases
 
 ## Technology Stack
 
@@ -383,6 +411,54 @@ result = run_async_safely(async_function(), timeout=30.0)
 ```
 
 This eliminates nested event loop crashes and provides consistent execution across the codebase.
+
+### IO Interfaces (`io_interfaces.py`)
+
+The `io_interfaces.py` module defines the `TerminalUIObserver` interface for decoupled UI architecture:
+
+```python
+from aider.io_interfaces import TerminalUIObserver
+
+class MyUIObserver(TerminalUIObserver):
+    def on_phase_change(self, phase: str, status: str = "running"):
+        # Handle autonomous workflow phase changes
+        pass
+    
+    def on_cost_update(self, total: float, percentage: float):
+        # Handle cost tracking updates
+        pass
+    
+    def on_agent_status(self, agent_id: str, status: str, task: str = None):
+        # Handle sub-agent status changes
+        pass
+```
+
+This follows the Observer pattern to decouple core logic from terminal rendering, ensuring an enterprise-grade architecture where UI components consume events rather than being directly coupled to business logic.
+
+### GUI Components (`gui/`)
+
+The `gui/` module provides rich-based UI components for enhanced user experience:
+
+- **dashboard.py** - `LiveDashboard` class implementing `TerminalUIObserver`
+  - Real-time status display for autonomous workflow phases
+  - Cost tracking visualization
+  - Security scan status
+  - Sub-agent progress monitoring
+  - Non-flickering live terminal display using `rich.live`
+
+- **diff_viewer.py** - Side-by-side diff visualization for code changes
+- **hints.py** - Contextual hint system for user guidance
+
+```python
+from aider.gui.dashboard import LiveDashboard
+from aider.io_interfaces import TerminalUIObserver
+
+# Dashboard implements TerminalUIObserver interface
+dashboard = LiveDashboard()
+
+# Can be registered with hooks manager for event updates
+hooks_manager.register_ui_observer(dashboard)
+```
 
 ## Development Setup
 

@@ -77,6 +77,15 @@ This is a **complete architectural rewrite** addressing every issue identified i
 | `tools_v2/compression.py` | 1,290 | Semantic compression |
 | `coders/tool_coder_v2.py` | 550 | Main coder integration |
 
+### Additional Tools v2 Modules
+
+| File | Purpose |
+|------|---------|
+| `tools_v2/mcp_manager.py` | MCP (Model Context Protocol) client integration |
+| `tools_v2/terminal_watcher.py` | Terminal output monitoring for long-running commands |
+| `tools_v2/search_web.py` | Web search capabilities with result formatting |
+| `tools_v2/openclaw_client.py` | OpenResponses API client for OpenClaw tool delegation |
+
 ### Tests (1 file, ~500 lines)
 
 | File | Tests | Purpose |
