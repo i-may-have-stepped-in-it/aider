@@ -86,6 +86,19 @@ This is a **complete architectural rewrite** addressing every issue identified i
 | `tools_v2/search_web.py` | Web search capabilities with result formatting |
 | `tools_v2/openclaw_client.py` | OpenResponses API client for OpenClaw tool delegation |
 
+### Modularized Router Components (v2.1.0)
+
+The `router.py` has been split into focused mixins:
+
+| File | Purpose |
+|------|---------|
+| `tools_v2/router_registry.py` | Tool handler registry and dispatch mapping |
+| `tools_v2/router_execution.py` | Preflight checks and resilient execution helpers |
+| `tools_v2/router_dispatch.py` | Dynamic tool execution (MCP integration) |
+| `tools_v2/router_observability.py` | Execution history, logging, and result tracking |
+| `tools_v2/router_search.py` | Search tool routing logic |
+| `tools_v2/router_terminal.py` | Terminal tool routing logic |
+
 ### Tests (1 file, ~500 lines)
 
 | File | Tests | Purpose |

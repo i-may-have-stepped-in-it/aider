@@ -190,9 +190,19 @@ To debug hooks, run Aider with `-v` or `--verbose` flag.
 ## File Locations
 
 - **Unified hooks**: `aider/hooks_manager.py` (v2.1.0)
+- **Configuration**: `aider/hooks_config.py` - `HookConfig`, `HookPoint` enum, priority/timeout/retry settings
 - **Legacy compatibility**: `aider/hooks.py` (shim)
 - **Bootstrap**: `aider/hooks_bootstrap.py` (v2.1.0)
 - **Example hooks**: `aider/hooks_example.py`
+
+### Hook Implementations (`hooks/`)
+
+- **`hooks/__init__.py`** - Package exports
+- **`hooks/cli_agent_hook.py`** - CLI agent lifecycle hooks (pre/post spawn callbacks)
+- **`hooks/gateway_tier_hook.py`** - Gateway tier management hooks (routing decisions)
+
+### Integration Points
+
 - **CLI arguments**: `aider/args.py`
 - **Command integration**: `aider/commands.py` (via runtime)
 - **Coder integration**: `aider/coders/base_coder.py` (via runtime)

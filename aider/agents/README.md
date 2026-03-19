@@ -229,6 +229,7 @@ agent-timeout: 300
 - `aider/agents/split_pane_display.py`: Multi-pane terminal display (v2.1.0)
 - `aider/agents/gateway.py`: Gateway for agent communication
 - `aider/agents/loop.py`: Agent coordination loop
+- `aider/agents/patch_args.py`: CLI argument patching utilities
 
 ### Integration Points
 
