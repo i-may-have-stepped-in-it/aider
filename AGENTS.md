@@ -110,6 +110,11 @@ The bootstrap module provides clean initialization without monkeypatching:
 - **runtime.py** - Service attachment (file watching, clipboard, hooks)
 - **session.py** - Coder and command creation with dependency injection
 - **gui.py** - GUI initialization
+- **io_setup.py** - IO setup with error handling and encoding fallback
+- **git_handler.py** - Git root helpers for startup
+- **update_flows.py** - Update/install/check helpers
+- **pre_run_actions.py** - Pre-run action orchestration (legacy compatibility)
+- **startup_policy.py** - Startup policy compatibility shims
 
 Key features:
 - No monkeypatching - clean dependency injection
@@ -350,6 +355,13 @@ Key features:
 - Structured logging and metrics
 
 See `TOOL_SYSTEM_V2_SUMMARY.md` for complete architecture details.
+
+#### Legacy Tools v1 (`tools/`)
+
+The original tools system (legacy, being phased out):
+
+- **risk.py** - Risk classification for tool execution (`RiskLevel` enum)
+- **schema.py** - Tool schema generation for LLM function calling
 
 ### Editor Protocol (`editor_protocol/`)
 
