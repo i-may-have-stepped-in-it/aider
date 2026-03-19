@@ -134,6 +134,21 @@ class TestInputOutput(unittest.TestCase):
         self.assertEqual(dashboard.total_cost, 1.25)
         self.assertEqual(dashboard.budget_percentage, 25.0)
 
+    def test_show_dashboard_is_disabled_by_default(self):
+        io = InputOutput(pretty=True, fancy_input=False)
+
+        io.show_dashboard()
+
+        self.assertIsNone(io.dashboard)
+
+    def test_show_dashboard_works_when_explicitly_enabled(self):
+        io = InputOutput(pretty=True, fancy_input=False, enable_dashboard=True)
+
+        io.show_dashboard()
+
+        self.assertIsNotNone(io.dashboard)
+        io.hide_dashboard()
+
     def test_autocompleter_get_command_completions(self):
         # Step 3: Mock the commands object
         commands = MagicMock()

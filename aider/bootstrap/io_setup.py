@@ -68,6 +68,7 @@ def setup_io_with_error_handling(args, input=None, output=None, io_cls=None):
             multiline_mode=args.multiline,
             notifications=args.notifications,
             notifications_command=args.notifications_command,
+            enable_dashboard=args.dashboard,
         )
         
         io.rule()

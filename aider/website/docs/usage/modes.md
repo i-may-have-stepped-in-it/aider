@@ -10,7 +10,7 @@ Aider has a few different chat modes:
 
 - `code` - Aider will make changes to your code to satisfy your requests.
 - `ask` - Aider will discuss your code and answer questions about it, but never make changes.
-- `architect` - Like code mode, aider will change your files. An architect model will propose changes and an editor model will translate that proposal into specific file edits.
+- `architect` - Like code mode, aider will change your files. An architect model will propose changes and an editor model will translate that proposal into specific file edits. Add `--dashboard` if you want the live dashboard UI during architect/autonomous sessions.
 - `help` - Aider will answer questions about aider: usage, configuration, troubleshooting, etc.
 
 By default, aider starts in "code" mode. As you are talking, you can
@@ -39,6 +39,7 @@ Or you can switch between coding modes using these commands without arguments:
 
 Or you can launch aider in one of the modes with the `--chat-mode <mode>` switch.
 There is also a special shortcut `--architect` to launch in `--chat-mode architect`.
+Use `--dashboard` alongside architect or autonomous workflows if you want the live dashboard UI.
 
 The aider prompt will indicate the active mode:
 
@@ -208,4 +209,3 @@ from math import factorial
 ```
 
 </div>
-

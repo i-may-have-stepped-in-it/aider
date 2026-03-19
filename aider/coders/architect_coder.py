@@ -211,8 +211,8 @@ class ArchitectCoder(ToolEnabledCoderV2):
         if not kwargs.get("is_reviewer"):
             self._trigger_ui_phase("Architect")
             self.audit_manager.log_event("architect_start")
-            # Show the live dashboard for autonomous mode
-            self.io.show_dashboard()
+            if getattr(self.io, "enable_dashboard", False):
+                self.io.show_dashboard()
 
         try:
             result = super().run(with_message=with_message, preproc=preproc, **kwargs)
@@ -220,7 +220,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 self.audit_manager.log_event("architect_complete", plan=result)
             return result
         finally:
-            if not kwargs.get("is_reviewer"):
+            if not kwargs.get("is_reviewer") and getattr(self.io, "enable_dashboard", False):
                 self.io.hide_dashboard()
 
     def critique_plan(self, plan):

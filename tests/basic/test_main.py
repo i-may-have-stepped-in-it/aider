@@ -11,6 +11,7 @@ import git
 from prompt_toolkit.input import DummyInput
 from prompt_toolkit.output import DummyOutput
 
+from aider.args import get_parser
 from aider.coders import Coder
 from aider.dump import dump  # noqa: F401
 from aider.io import InputOutput
@@ -413,6 +414,20 @@ class TestMain(TestCase):
             # Check if the code_theme setting is for light mode
             _, kwargs = MockInputOutput.call_args
             self.assertEqual(kwargs["code_theme"], "default")
+
+    def test_dashboard_flag_threads_to_io(self):
+        with patch("aider.main.InputOutput") as MockInputOutput:
+            MockInputOutput.return_value.get_input.return_value = None
+            main(["--dashboard", "--no-git", "--exit"], input=DummyInput(), output=DummyOutput())
+            _, kwargs = MockInputOutput.call_args
+            self.assertTrue(kwargs["enable_dashboard"])
+
+    def test_help_mentions_dashboard_flag(self):
+        parser = get_parser([], None)
+        help_text = parser.format_help()
+
+        self.assertIn("--dashboard", help_text)
+        self.assertIn("live dashboard", help_text)
 
     def create_env_file(self, file_name, content):
         env_file_path = Path(self.tempdir) / file_name

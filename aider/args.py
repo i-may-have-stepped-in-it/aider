@@ -328,6 +328,15 @@ def get_parser(default_config_files, git_root):
         help="Enable/disable pretty, colorized output (default: True)",
     )
     group.add_argument(
+        "--dashboard",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Enable/disable the live dashboard UI for architect/autonomous sessions"
+            " (default: False)"
+        ),
+    )
+    group.add_argument(
         "--stream",
         action=argparse.BooleanOptionalAction,
         default=True,

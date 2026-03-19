@@ -156,6 +156,7 @@ export AIDER_AUTO_TEST_TIMEOUT=300     # Test timeout in seconds
 ```bash
 aider --auto-accept-architect    # Auto-accept architect suggestions
 aider --architect               # Enable architect mode by default
+aider --architect --dashboard   # Enable architect mode with the live dashboard UI
 ```
 
 ## Tips for Best Results

@@ -196,6 +196,9 @@ cog.outl("```")
 ## Enable/disable pretty, colorized output (default: True)
 #AIDER_PRETTY=true
 
+## Enable/disable the live dashboard UI for architect/autonomous sessions (default: False)
+#AIDER_DASHBOARD=false
+
 ## Enable/disable streaming responses (default: True)
 #AIDER_STREAM=true
 

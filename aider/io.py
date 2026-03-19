@@ -271,6 +271,7 @@ class InputOutput:
         root=".",
         notifications=False,
         notifications_command=None,
+        enable_dashboard=False,
     ):
         explicit_pretty = pretty is not None
         self.placeholder = None
@@ -280,6 +281,7 @@ class InputOutput:
         self.multiline_mode = multiline_mode
         self.bell_on_next_input = False
         self.notifications = notifications
+        self.enable_dashboard = enable_dashboard
         if notifications and notifications_command is None:
             self.notifications_command = self.get_default_notification_command()
         else:
@@ -488,7 +490,7 @@ class InputOutput:
 
     def show_dashboard(self):
         """Enable the live dashboard."""
-        if not self.pretty or self.is_dumb_terminal:
+        if not self.enable_dashboard or not self.pretty or self.is_dumb_terminal:
             return
 
         from .gui.dashboard import LiveDashboard

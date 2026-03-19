@@ -174,6 +174,50 @@ class TestArchitectRecursiveCorrection:
         assert architect.num_critiques == 2
 
 
+class TestArchitectDashboardPolicy:
+    """Tests for dashboard opt-in behavior."""
+
+    def test_architect_run_does_not_force_dashboard_by_default(self):
+        from aider.coders.architect_coder import ArchitectCoder
+
+        io = Mock()
+        io.enable_dashboard = False
+        io.show_dashboard = Mock()
+        io.hide_dashboard = Mock()
+
+        architect = ArchitectCoder(io=io, main_model=Mock())
+        architect._trigger_ui_phase = Mock()
+        architect.audit_manager = Mock()
+        architect.research_done = True
+
+        with patch("aider.coders.architect_coder.ToolEnabledCoderV2.run", return_value="plan"):
+            result = architect.run(with_message="test request")
+
+        assert result == "plan"
+        io.show_dashboard.assert_not_called()
+        io.hide_dashboard.assert_not_called()
+
+    def test_architect_run_shows_dashboard_when_enabled(self):
+        from aider.coders.architect_coder import ArchitectCoder
+
+        io = Mock()
+        io.enable_dashboard = True
+        io.show_dashboard = Mock()
+        io.hide_dashboard = Mock()
+
+        architect = ArchitectCoder(io=io, main_model=Mock())
+        architect._trigger_ui_phase = Mock()
+        architect.audit_manager = Mock()
+        architect.research_done = True
+
+        with patch("aider.coders.architect_coder.ToolEnabledCoderV2.run", return_value="plan"):
+            result = architect.run(with_message="test request")
+
+        assert result == "plan"
+        io.show_dashboard.assert_called_once()
+        io.hide_dashboard.assert_called_once()
+
+
 class TestArchitectProactiveMonitoring:
     """Tests for proactive monitoring of background processes."""
 

@@ -85,7 +85,7 @@ class ModeCommandsMixin:
                     "architect",
                     (
                         "Work with an architect model to design code changes, and an editor to make"
-                        " them."
+                        " them. Use --dashboard to enable the live dashboard UI."
                     ),
                 ),
                 ("context", "Automatically identify which files will need to be edited."),
@@ -220,7 +220,7 @@ class ModeCommandsMixin:
         return self._generic_chat_command(args, self.coder.main_model.edit_format)
 
     def cmd_architect(self, args):
-        """Enter architect/editor mode using 2 different models. If no prompt provided, switches to architect/editor mode."""  # noqa
+        """Enter architect/editor mode using 2 different models. Use --dashboard to enable the live dashboard UI. If no prompt provided, switches to architect/editor mode."""  # noqa
         return self._generic_chat_command(args, "architect")
 
     def cmd_context(self, args):
