@@ -378,6 +378,61 @@ Language Server Protocol client:
   - `LSPClient` - Interacts with language servers (pyright, gopls, rust-analyzer)
   - Provides semantic understanding of codebases
 
+### Hooks Implementations (`hooks/`)
+
+Hook implementations for specific use cases:
+
+- **cli_agent_hook.py** - CLI agent lifecycle hooks
+  - Pre/post agent spawn callbacks
+  - Agent execution monitoring
+- **gateway_tier_hook.py** - Gateway tier management hooks
+  - Tier routing decisions
+  - Load balancing hooks
+
+### Core Utilities (Root Level)
+
+Additional core modules providing essential functionality:
+
+| Module | Purpose |
+|--------|---------|
+| **analytics.py** | Usage analytics tracking and reporting |
+| **context.py** | `ProjectContext` - Unified state container for repository, chat history, and context maps |
+| **copypaste.py** | `ClipboardWatcher` - Watches clipboard for changes and updates IO placeholder |
+| **editor.py** | External text editor integration (discovers `$VISUAL`/`$EDITOR`, launches temp files) |
+| **exceptions.py** | `LiteLLMExceptions` - Exception mapping for LiteLLM errors with retry logic |
+| **filesystem.py** | `TransactionalFilesystem` - Atomic file operations using shadow workspace |
+| **help.py** | Interactive `/help` command using llama_index for semantic documentation search |
+| **history.py** | `ChatSummary` - Chat history summarization for context window management |
+| **linter.py** | `Linter` - Code linting with flake8, tree-sitter, and Python compile checks |
+| **llm.py** | `LazyLiteLLM` - Lazy loading wrapper for LiteLLM to improve startup time |
+| **mdstream.py** | `MarkdownStream` - Streaming markdown renderer with Rich terminal display |
+| **models.py** | LLM model configuration, settings, and OpenClaw integration |
+| **onboarding.py** | User onboarding with default model selection and OpenRouter OAuth flow |
+| **openclaw_bridge.py** | `OpenClawBridge` - Core integration for OpenClaw skill discovery and execution |
+| **openclaw_model.py** | OpenClaw model settings and configuration |
+| **openrouter.py** | `OpenRouterModelManager` - Caches OpenRouter model metadata with 24h TTL |
+| **prompts.py** | System prompts (commit messages, summarization, command replies) |
+| **repo.py** | Git repository integration and operations |
+| **repomap.py** | Repository mapping for context and codebase understanding |
+| **scrape.py** | Web scraping with Playwright/httpx, HTML→Markdown conversion |
+| **sendchat.py** | Message validation ensuring proper user/assistant alternation |
+| **urls.py** | URL constants for documentation, FAQ, GitHub issues |
+| **utils.py** | General utilities (file type detection, message formatting, pip install helpers) |
+| **versioncheck.py** | PyPI version checking with auto-upgrade support |
+| **voice.py** | `Voice` - Audio recording and Whisper transcription |
+| **watch.py** | `FileWatcher` - Watches files for "AI!" / "AI?" comment triggers |
+
+### Additional Skills
+
+Built-in skill implementations:
+
+| Skill | File | Description |
+|-------|------|-------------|
+| **Code Review** | `skills/code_review.py` | Parallel code review capabilities |
+| **Documentation** | `skills/documentation.py` | Documentation generation |
+| **Refactoring** | `skills/refactoring.py` | Code refactoring assistance |
+| **Test Generation** | `skills/test_generation.py` | Automated test generation |
+
 ## Technology Stack
 
 ### Core Dependencies
