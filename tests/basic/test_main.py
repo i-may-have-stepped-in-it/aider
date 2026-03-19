@@ -765,7 +765,7 @@ class TestMain(TestCase):
 
     def test_return_coder_does_not_start_background_semantic_index(self):
         with GitTemporaryDirectory():
-            with patch("aider.main.check_and_load_imports"), patch(
+            with patch("aider.main.check_and_load_imports") as mock_imports, patch(
                 "threading.Thread"
             ) as mock_thread:
                 coder = main(
@@ -776,6 +776,7 @@ class TestMain(TestCase):
                 )
 
             self.assertIsInstance(coder, Coder)
+            mock_imports.assert_not_called()
             mock_thread.assert_not_called()
 
     def test_return_coder_clone_preserves_runtime(self):

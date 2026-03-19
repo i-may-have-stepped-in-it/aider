@@ -16,6 +16,7 @@ from aider.analytics import Analytics
 from aider.bootstrap import launch as launch_bootstrap
 from aider.bootstrap.gui import launch_gui
 from aider.bootstrap.launch import (
+    apply_env_and_deprecated_args,
     check_and_load_imports,
     check_gitignore,
     check_streamlit_install,
@@ -24,6 +25,8 @@ from aider.bootstrap.launch import (
     is_first_run_of_new_version,
     prepare_main_model,
     prepare_repo_and_runtime,
+    should_background_semantic_index,
+    should_preload_imports,
     setup_git,
 )
 from aider.bootstrap.runtime import (
@@ -38,7 +41,6 @@ from aider.bootstrap.session import (
     create_summarizer,
     finalize_streaming_settings,
 )
-from aider.deprecated import handle_deprecated_model_args
 from aider.format_settings import format_settings, scrub_sensitive_info
 from aider.hooks import create_hooks_manager
 from aider.io import InputOutput
@@ -152,52 +154,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         io = get_io(False)
         io.tool_warning("Terminal does not support pretty output (UnicodeDecodeError)")
 
-    # Process any environment variables set via --set-env
-    if args.set_env:
-        for env_setting in args.set_env:
-            try:
-                name, value = env_setting.split("=", 1)
-                os.environ[name.strip()] = value.strip()
-            except ValueError:
-                io.tool_error(f"Invalid --set-env format: {env_setting}")
-                io.tool_output("Format should be: ENV_VAR_NAME=value")
-                return 1
-
-    # Process any API keys set via --api-key
-    if args.api_key:
-        for api_setting in args.api_key:
-            try:
-                provider, key = api_setting.split("=", 1)
-                env_var = f"{provider.strip().upper()}_API_KEY"
-                os.environ[env_var] = key.strip()
-            except ValueError:
-                io.tool_error(f"Invalid --api-key format: {api_setting}")
-                io.tool_output("Format should be: provider=key")
-                return 1
-
-    if args.anthropic_api_key:
-        os.environ["ANTHROPIC_API_KEY"] = args.anthropic_api_key
-
-    if args.openai_api_key:
-        os.environ["OPENAI_API_KEY"] = args.openai_api_key
-
-    # Handle deprecated model shortcut args
-    handle_deprecated_model_args(args, io)
-    if args.openai_api_base:
-        os.environ["OPENAI_API_BASE"] = args.openai_api_base
-    if args.openai_api_version:
-        io.tool_warning(
-            "--openai-api-version is deprecated, use --set-env OPENAI_API_VERSION=<value>"
-        )
-        os.environ["OPENAI_API_VERSION"] = args.openai_api_version
-    if args.openai_api_type:
-        io.tool_warning("--openai-api-type is deprecated, use --set-env OPENAI_API_TYPE=<value>")
-        os.environ["OPENAI_API_TYPE"] = args.openai_api_type
-    if args.openai_organization_id:
-        io.tool_warning(
-            "--openai-organization-id is deprecated, use --set-env OPENAI_ORGANIZATION=<value>"
-        )
-        os.environ["OPENAI_ORGANIZATION"] = args.openai_organization_id
+    err = apply_env_and_deprecated_args(args, io)
+    if err:
+        return err
 
     analytics = Analytics(
         logfile=args.analytics_log,
@@ -335,7 +294,8 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     io.tool_output(cmd_line, log_only=True)
 
     is_first_run = is_first_run_of_new_version(io, verbose=args.verbose)
-    check_and_load_imports(io, is_first_run, verbose=args.verbose)
+    if should_preload_imports(args, return_coder=return_coder):
+        check_and_load_imports(io, is_first_run, verbose=args.verbose)
 
     handled, result, main_model, lint_cmds = prepare_main_model(
         args=args,
@@ -375,21 +335,8 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         commands=commands,
         summarizer=summarizer,
         runtime=runtime,
-        background_semantic_index=not any(
-            [
-                return_coder,
-                args.exit,
-                args.message,
-                args.message_file,
-                args.mcp,
-                args.acp,
-                args.show_prompts,
-                args.lint,
-                args.test,
-                args.commit,
-                args.show_repo_map,
-                args.apply,
-            ]
+        background_semantic_index=should_background_semantic_index(
+            args, return_coder=return_coder
         ),
     )
     if isinstance(coder, int):

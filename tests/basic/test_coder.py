@@ -245,6 +245,53 @@ class TestCoder(unittest.TestCase):
             self.assertIn("Input tokens: ~101 of 10", message)
             self.assertIn("Total tokens: ~101 of 10", message)
 
+    def test_semantic_indexer_is_lazy_on_startup(self):
+        io = InputOutput(pretty=False, yes=True)
+
+        with patch("aider.coders.base_coder.SemanticIndexer") as mock_indexer:
+            coder = Coder.create(
+                self.GPT35,
+                None,
+                io=io,
+                fnames=[],
+                use_semantic_index=True,
+            )
+
+            mock_indexer.assert_not_called()
+            indexer = coder.get_semantic_indexer()
+
+        mock_indexer.assert_called_once_with(coder.root)
+        self.assertIs(indexer, mock_indexer.return_value)
+
+    def test_background_semantic_index_starts_on_first_use(self):
+        with GitTemporaryDirectory():
+            repo = git.Repo()
+            Path("tracked.py").write_text("print('hi')\n")
+            repo.git.add("tracked.py")
+            repo.git.commit("-m", "init")
+
+            io = InputOutput(pretty=False, yes=True)
+
+            with (
+                patch("aider.coders.base_coder.SemanticIndexer") as mock_indexer,
+                patch("threading.Thread") as mock_thread,
+            ):
+                coder = Coder.create(
+                    self.GPT35,
+                    None,
+                    io=io,
+                    fnames=[],
+                    use_semantic_index=True,
+                )
+
+                mock_indexer.assert_not_called()
+                mock_thread.assert_not_called()
+
+                coder.get_semantic_indexer(start_background=True)
+
+        mock_indexer.assert_called_once_with(coder.root)
+        mock_thread.assert_called_once()
+
     def test_send_uses_subclass_final_assistant_output_hook(self):
         class HookedCoder(Coder):
             def get_final_assistant_output(self):

@@ -150,9 +150,8 @@ class ToolCommandsMixin:
             self.show_command_usage("/index")
             return
 
-        indexer = SemanticIndexer.get_global()
-
         if args.startswith("add "):
+            indexer = SemanticIndexer.get_global()
             path_str = args[len("add ") :].strip()
             path = Path(path_str).resolve()
             if not path.exists() or not path.is_dir():
@@ -175,10 +174,18 @@ class ToolCommandsMixin:
 
         elif args.startswith("search "):
             query = args[len("search ") :].strip()
-            self.io.tool_output(f"Searching global index for: {query}...")
+            if hasattr(self.coder, "get_semantic_indexer"):
+                indexer = self.coder.get_semantic_indexer(start_background=True)
+            else:
+                indexer = getattr(self.coder, "semantic_indexer", None)
+
+            if indexer is None:
+                indexer = SemanticIndexer.get_global(getattr(self.coder, "root", None))
+
+            self.io.tool_output(f"Searching semantic index for: {query}...")
             results = indexer.query(query)
             if results:
-                self.io.tool_output("Matches found in global index:")
+                self.io.tool_output("Matches found in semantic index:")
                 for path, score in results:
                     self.io.tool_output(f"  [{score:.2f}] {path}")
             else:

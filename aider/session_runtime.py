@@ -52,13 +52,14 @@ class SessionRuntime:
         hooks_manager=None,
         skill_registry=None,
         async_executor=None,
+        resolve_defaults=True,
     ):
         """Create a session runtime with explicit default shared services."""
-        if hooks_manager is None:
+        if hooks_manager is None and resolve_defaults:
             from aider.hooks_manager import get_hooks_manager
 
             hooks_manager = get_hooks_manager()
-        if skill_registry is None:
+        if skill_registry is None and resolve_defaults:
             from aider.skills.registry import get_registry
 
             skill_registry = get_registry()

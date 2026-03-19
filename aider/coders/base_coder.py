@@ -21,6 +21,7 @@ from aider.history import ChatSummary
 from aider.indexers.semantic import SemanticIndexer
 from aider.io import InputOutput
 from aider.linter import Linter
+from aider.hooks import get_hooks_manager
 from aider.reasoning_tags import (
     REASONING_TAG,
 )
@@ -424,7 +425,12 @@ class Coder(
 
         # Fill in a dummy Analytics if needed, but it is never .enable()'d
         self.analytics = analytics if analytics is not None else Analytics()
-        self.runtime = runtime or SessionRuntime.create(io=io, analytics=self.analytics)
+        self.runtime = runtime or SessionRuntime.create(
+            io=io,
+            analytics=self.analytics,
+            hooks_manager=get_hooks_manager(),
+            resolve_defaults=False,
+        )
         if hasattr(self.runtime, "bind_io"):
             self.runtime.bind_io(io)
         if hasattr(self.runtime, "bind_analytics"):
@@ -434,6 +440,9 @@ class Coder(
 
         self.use_semantic_index = use_semantic_index
         self.semantic_indexer = None
+        self._semantic_index_kwargs = {}
+        self._background_semantic_index_enabled = False
+        self._background_semantic_index_started = False
 
         self._sync_runtime_services()
         if hasattr(self.runtime, "bind_coder"):
@@ -640,35 +649,20 @@ class Coder(
             self.root = utils.find_common_root(self.abs_fnames)
 
         if self.use_semantic_index:
-            kwargs = {}
             if self.main_model.embedding_model_name and isinstance(
                 self.main_model.embedding_model_name, str
             ):
-                kwargs["model_name"] = self.main_model.embedding_model_name
+                self._semantic_index_kwargs["model_name"] = self.main_model.embedding_model_name
             if self.main_model.embedding_api_base and isinstance(
                 self.main_model.embedding_api_base, str
             ):
-                kwargs["api_base"] = self.main_model.embedding_api_base
-            self.semantic_indexer = SemanticIndexer(self.root, **kwargs)
+                self._semantic_index_kwargs["api_base"] = self.main_model.embedding_api_base
 
-            # PARITY+: Background Semantic Indexing
-            if self.repo and background_semantic_index and not os.environ.get(
-                "AIDER_DISABLE_BACKGROUND_SEMANTIC_INDEX"
-            ):
-
-                def run_background_index():
-                    try:
-                        files = self.get_all_relative_files()
-                        self.semantic_indexer.update_index(files)
-                        # self.io.tool_output("Semantic index update complete.")
-                    except Exception as e:
-                        logger.error(f"Background indexing failed: {e}")
-
-                import threading
-
-                self.io.tool_output("Updating semantic index in background...")
-                indexing_thread = threading.Thread(target=run_background_index, daemon=True)
-                indexing_thread.start()
+            self._background_semantic_index_enabled = bool(
+                self.repo
+                and background_semantic_index
+                and not os.environ.get("AIDER_DISABLE_BACKGROUND_SEMANTIC_INDEX")
+            )
 
         if read_only_fnames:
             self.abs_read_only_fnames = set()
@@ -730,6 +724,39 @@ class Coder(
             if self.verbose:
                 self.io.tool_output("JSON Schema:")
                 self.io.tool_output(json.dumps(self.functions, indent=4))
+
+    def get_semantic_indexer(self, start_background=False):
+        if not self.use_semantic_index:
+            return None
+
+        if self.semantic_indexer is None:
+            self.semantic_indexer = SemanticIndexer(self.root, **self._semantic_index_kwargs)
+
+        if start_background:
+            self._ensure_background_semantic_index()
+
+        return self.semantic_indexer
+
+    def _ensure_background_semantic_index(self):
+        if not self._background_semantic_index_enabled or self._background_semantic_index_started:
+            return
+
+        self._background_semantic_index_started = True
+
+        def run_background_index():
+            try:
+                files = self.get_all_relative_files()
+                indexer = self.get_semantic_indexer()
+                if indexer is not None:
+                    indexer.update_index(files)
+            except Exception as e:
+                logger.error(f"Background indexing failed: {e}")
+
+        import threading
+
+        self.io.tool_output("Updating semantic index in background...")
+        indexing_thread = threading.Thread(target=run_background_index, daemon=True)
+        indexing_thread.start()
 
     def add_rel_fname(self, rel_fname):
         self.abs_fnames.add(self.abs_root_path(rel_fname))

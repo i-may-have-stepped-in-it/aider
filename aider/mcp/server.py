@@ -147,7 +147,14 @@ class AiderMCPServer:
                     query = args.get("query")
                     from aider.indexers.semantic import SemanticIndexer
 
-                    indexer = SemanticIndexer.get_global()
+                    if hasattr(self.coder, "get_semantic_indexer"):
+                        indexer = self.coder.get_semantic_indexer(start_background=True)
+                    else:
+                        indexer = getattr(self.coder, "semantic_indexer", None)
+
+                    if indexer is None:
+                        indexer = SemanticIndexer.get_global(getattr(self.coder, "root", None))
+
                     results = indexer.query(query)
                     for path, score in results:
                         print(f"- {path} ({score:.2f})")

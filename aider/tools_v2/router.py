@@ -1168,7 +1168,14 @@ class ToolRouterV2:
         try:
             from aider.indexers.semantic import SemanticIndexer
 
-            indexer = SemanticIndexer.get_global()
+            if hasattr(self.coder, "get_semantic_indexer"):
+                indexer = self.coder.get_semantic_indexer(start_background=True)
+            else:
+                indexer = getattr(self.coder, "semantic_indexer", None)
+
+            if indexer is None:
+                indexer = SemanticIndexer.get_global(getattr(self.coder, "root", None))
+
             results = indexer.query(query, limit=limit)
 
             if results:

@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 
 from aider import __version__, models, urls, utils
 from aider.args import get_parser
+from aider.deprecated import handle_deprecated_model_args
 from aider.models import ModelSettings
 from aider.onboarding import offer_openrouter_oauth, select_default_model
 from aider.repo import ANY_GIT_ERROR, GitRepo
@@ -369,6 +370,56 @@ def prepare_main_model(args, argv, io, analytics, git_root):
     return False, None, main_model, lint_cmds
 
 
+def apply_env_and_deprecated_args(args, io):
+    """Apply env-var, API-key, and deprecated model argument side effects."""
+    if args.set_env:
+        for env_setting in args.set_env:
+            try:
+                name, value = env_setting.split("=", 1)
+                os.environ[name.strip()] = value.strip()
+            except ValueError:
+                io.tool_error(f"Invalid --set-env format: {env_setting}")
+                io.tool_output("Format should be: ENV_VAR_NAME=value")
+                return 1
+
+    if args.api_key:
+        for api_setting in args.api_key:
+            try:
+                provider, key = api_setting.split("=", 1)
+                env_var = f"{provider.strip().upper()}_API_KEY"
+                os.environ[env_var] = key.strip()
+            except ValueError:
+                io.tool_error(f"Invalid --api-key format: {api_setting}")
+                io.tool_output("Format should be: provider=key")
+                return 1
+
+    if args.anthropic_api_key:
+        os.environ["ANTHROPIC_API_KEY"] = args.anthropic_api_key
+
+    if args.openai_api_key:
+        os.environ["OPENAI_API_KEY"] = args.openai_api_key
+
+    handle_deprecated_model_args(args, io)
+
+    if args.openai_api_base:
+        os.environ["OPENAI_API_BASE"] = args.openai_api_base
+    if args.openai_api_version:
+        io.tool_warning(
+            "--openai-api-version is deprecated, use --set-env OPENAI_API_VERSION=<value>"
+        )
+        os.environ["OPENAI_API_VERSION"] = args.openai_api_version
+    if args.openai_api_type:
+        io.tool_warning("--openai-api-type is deprecated, use --set-env OPENAI_API_TYPE=<value>")
+        os.environ["OPENAI_API_TYPE"] = args.openai_api_type
+    if args.openai_organization_id:
+        io.tool_warning(
+            "--openai-organization-id is deprecated, use --set-env OPENAI_ORGANIZATION=<value>"
+        )
+        os.environ["OPENAI_ORGANIZATION"] = args.openai_organization_id
+
+    return None
+
+
 def prepare_repo_and_runtime(args, io, analytics, hooks_manager, main_model, fnames, git_dname):
     """Create the git repo wrapper if enabled and assemble the session runtime."""
     repo = None
@@ -403,8 +454,51 @@ def prepare_repo_and_runtime(args, io, analytics, hooks_manager, main_model, fna
     else:
         analytics.event("no-repo")
 
-    runtime = SessionRuntime.create(io=io, analytics=analytics, hooks_manager=hooks_manager)
+    runtime = SessionRuntime.create(
+        io=io,
+        analytics=analytics,
+        hooks_manager=hooks_manager,
+        resolve_defaults=False,
+    )
     return False, None, repo, runtime
+
+
+def should_preload_imports(args, return_coder=False):
+    return not any(
+        [
+            return_coder,
+            args.exit,
+            args.message,
+            args.message_file,
+            args.mcp,
+            args.acp,
+            args.show_prompts,
+            args.lint,
+            args.test,
+            args.commit,
+            args.show_repo_map,
+            args.apply,
+        ]
+    )
+
+
+def should_background_semantic_index(args, return_coder=False):
+    return not any(
+        [
+            return_coder,
+            args.exit,
+            args.message,
+            args.message_file,
+            args.mcp,
+            args.acp,
+            args.show_prompts,
+            args.lint,
+            args.test,
+            args.commit,
+            args.show_repo_map,
+            args.apply,
+        ]
+    )
 
 
 def generate_search_path_list(default_file, git_root, command_line_file):
@@ -660,26 +754,34 @@ def build_default_config_files(git_root):
 
 
 def parse_args(argv, git_root):
-    parser = get_parser(build_default_config_files(git_root), git_root)
+    blank_aider_env = {key: value for key, value in os.environ.items() if key.startswith("AIDER_") and not value}
+
+    for key in blank_aider_env:
+        os.environ.pop(key, None)
+
     try:
+        parser = get_parser(build_default_config_files(git_root), git_root)
+        try:
+            args, unknown = parser.parse_known_args(argv)
+        except AttributeError as e:
+            if all(word in str(e) for word in ["bool", "object", "has", "no", "attribute", "strip"]):
+                if check_config_files_for_yes(build_default_config_files(git_root)):
+                    return parser, None, None, 1
+            raise e
+
+        default_config_files = build_default_config_files(git_root)
+        if args.verbose:
+            print("Config files search order, if no --config:")
+            for file in default_config_files:
+                exists = "(exists)" if Path(file).exists() else ""
+                print(f"  - {file} {exists}")
+
+        default_config_files.reverse()
+
+        parser = get_parser(default_config_files, git_root)
         args, unknown = parser.parse_known_args(argv)
-    except AttributeError as e:
-        if all(word in str(e) for word in ["bool", "object", "has", "no", "attribute", "strip"]):
-            if check_config_files_for_yes(build_default_config_files(git_root)):
-                return parser, None, None, 1
-        raise e
-
-    default_config_files = build_default_config_files(git_root)
-    if args.verbose:
-        print("Config files search order, if no --config:")
-        for file in default_config_files:
-            exists = "(exists)" if Path(file).exists() else ""
-            print(f"  - {file} {exists}")
-
-    default_config_files.reverse()
-
-    parser = get_parser(default_config_files, git_root)
-    args, unknown = parser.parse_known_args(argv)
-    loaded_dotenvs = load_dotenv_files(git_root, args.env_file, args.encoding)
-    args = parser.parse_args(argv)
-    return parser, args, loaded_dotenvs, None
+        loaded_dotenvs = load_dotenv_files(git_root, args.env_file, args.encoding)
+        args = parser.parse_args(argv)
+        return parser, args, loaded_dotenvs, None
+    finally:
+        os.environ.update(blank_aider_env)
