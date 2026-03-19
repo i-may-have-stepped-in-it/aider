@@ -159,6 +159,7 @@ Clean initialization without monkeypatching:
 - `security/` - Security hardening
 - `memory/` - Memory management
 - `lsp/` - Language Server Protocol
+- `openclaw_metadata.py` - OpenClaw model metadata resolution
 
 ---
 

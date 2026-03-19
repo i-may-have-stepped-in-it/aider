@@ -105,4 +105,51 @@ pip install pip-tools
 
 ---
 
+## 🏗️ Architecture Guidelines
+
+### Bootstrap/Runtime Architecture (v2.1.0)
+
+The codebase uses a clean initialization architecture that eliminates monkey-patching:
+
+- **`bootstrap/`** - Clean initialization without monkeypatching:
+  - `launch.py` - CLI argument parsing, git setup, config loading
+  - `runtime.py` - Service attachment (file watching, clipboard, hooks)
+  - `session.py` - Coder and command creation with dependency injection
+  - `gui.py` - GUI initialization
+
+- **`session_runtime.py`** - Session-scoped shared services container:
+  - `SessionRuntime` dataclass holds io, analytics, hooks_manager, skill_registry, agent_service, agent_registry, a2a_bus, async_executor
+  - Created in `main.py` and passed to all components
+
+### Modularized Components (v2.1.0)
+
+The codebase has been split from monolithic files into focused modules:
+
+**Base Coder** (`coders/base_coder_*.py`):
+- `base_coder_context.py` - Context management
+- `base_coder_control.py` - Control flow
+- `base_coder_edits.py` - Edit application
+- `base_coder_files.py` - File operations
+- `base_coder_history.py` - Chat history management
+- `base_coder_lifecycle.py` - Lifecycle hooks
+- `base_coder_llm_output.py` - LLM output handling
+- `base_coder_messages.py` - Message formatting
+- `base_coder_output.py` - Output handling
+- `base_coder_paths.py` - Path resolution
+- `base_coder_reply.py` - Reply processing
+- `base_coder_runtime.py` - Runtime integration
+- `base_coder_shell.py` - Shell command execution
+
+**Commands** (`commands_*.py`):
+- `commands_collaboration.py` - /share, /review
+- `commands_files.py` - /add, /drop, /read-only
+- `commands_modes.py` - /ask, /code, /architect
+- `commands_tools.py` - /test, /lint, /git
+- `commands_workflow.py` - /commit, /undo, /reset
+- `commands_misc.py` - Other commands
+
+When adding new features, place them in the appropriate focused module rather than expanding the main files.
+
+---
+
 By contributing to this repository, you agree to adhere to these enterprise standards and maintain the security and architectural integrity of the OpenClaw Aider framework.

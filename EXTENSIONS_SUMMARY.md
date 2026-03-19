@@ -78,6 +78,9 @@ Skills automatically discovered from:
   - `vector_store.py` - `VectorStore` for numpy-based semantic search
 - `aider/lsp/` - Language Server Protocol client
   - `client.py` - `LSPClient` for language server integration
+- `aider/openclaw_metadata.py` - OpenClaw model metadata resolution
+  - Resolves metadata for OpenClaw aliases (e.g., `openclaw:chat`)
+  - Context window sizing without fallback to defaults
 
 This document summarizes all extensions and modifications made to the original Aider codebase.
 
