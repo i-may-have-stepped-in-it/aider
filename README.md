@@ -50,10 +50,11 @@ Full parity with Claude Code, Codex, and Gemini autonomous modes:
 
 # Uses full Architect workflow:
 # 1. Librarian phase - Auto-discovers relevant files
-# 2. Architect phase - Plans with tool access  
-# 3. Reviewer phase - Self-critiques the plan
-# 4. Editor phase - Executes with proper formatting
-# 5. Self-correction - Retries on test failures
+# 2. Architect phase - Plans with tool access
+# 3. Security Scan phase - Checks for vulnerabilities
+# 4. Reviewer phase - Self-critiques the plan
+# 5. Editor phase - Executes with proper formatting
+# 6. Self-correction - Retries on test failures
 ```
 
 ## 🏗️ Multi-Agent Architecture
@@ -190,15 +191,16 @@ aider --model o3-mini --api-key openai=<key>
 - **Modularized Base Coder** - Split into 13 focused modules
 - **Modularized Commands** - Split into 6 focused modules  
 - **Auto-Discovery** - 100+ skills discovered automatically
-- **`/auto` command** - Full Architect workflow (Librarian → Architect → Reviewer → Editor)
+- **`/auto` command** - Full Architect workflow (Librarian → Architect → Security Scan → Reviewer → Editor)
 - **New Infrastructure** - Audit, security, memory, LSP modules
 - **Test fixes** - All tests passing
 - **Documentation** - Comprehensive architecture docs in AGENTS.md
 
 ### Code Quality
-- ~50,000 lines of Python across 196+ files
-- 700+ tests across 50+ test files
+- ~53,000 lines of Python across 206+ files
+- 700+ tests across 55+ test files
 - Modular architecture with clean separation
+- 24 comprehensive documentation files
 - All modules import successfully
 
 ## 🤝 Contributing
