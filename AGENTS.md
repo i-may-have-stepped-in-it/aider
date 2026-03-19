@@ -326,6 +326,17 @@ The tool system is located in `tools_v2/` and provides production-grade tool exe
 | **WebSearch** | `search_web.py` | Web search capabilities |
 | **OpenClawClient** | `openclaw_client.py` | OpenResponses API client for tool delegation |
 
+#### Modularized Router Components (v2.1.0)
+
+The monolithic `router.py` has been split into focused mixins:
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **RouterRegistryMixin** | `router_registry.py` | Tool handler registry and dispatch mapping |
+| **RouterExecutionMixin** | `router_execution.py` | Preflight checks and resilient execution helpers |
+| **RouterDispatchMixin** | `router_dispatch.py` | Dynamic tool execution (MCP integration) |
+| **RouterObservabilityMixin** | `router_observability.py` | Execution history, logging, and result tracking |
+
 Key features:
 - No nested `asyncio.run()` calls (singleton thread pool)
 - Static sandbox profiles (no injection vulnerabilities)
@@ -425,6 +436,7 @@ Additional core modules providing essential functionality:
 | **onboarding.py** | User onboarding with default model selection and OpenRouter OAuth flow |
 | **openclaw_bridge.py** | `OpenClawBridge` - Core integration for OpenClaw skill discovery and execution |
 | **openclaw_model.py** | OpenClaw model settings and configuration |
+| **openclaw_metadata.py** | OpenClaw model metadata resolution and caching for context window sizing |
 | **openrouter.py** | `OpenRouterModelManager` - Caches OpenRouter model metadata with 24h TTL |
 | **prompts.py** | System prompts (commit messages, summarization, command replies) |
 | **repo.py** | Git repository integration and operations |
