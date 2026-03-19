@@ -367,6 +367,7 @@ Features:
 Code indexing for semantic search and retrieval:
 
 - **semantic.py** - Semantic code indexer
+- **semantic_service.py** - Runtime-owned semantic index service (SessionRuntime integration)
 
 Features:
 - Vector-based code embeddings
@@ -437,6 +438,8 @@ Additional core modules providing essential functionality:
 | **llm.py** | `LazyLiteLLM` - Lazy loading wrapper for LiteLLM to improve startup time |
 | **mdstream.py** | `MarkdownStream` - Streaming markdown renderer with Rich terminal display |
 | **models.py** | LLM model configuration, settings, and OpenClaw integration |
+| **reasoning_tags.py** | Reasoning content tag handling for models (DeepSeek R1, etc.) |
+| **semantic_index_manager.py** | Unified semantic index ownership and lifecycle management |
 | **onboarding.py** | User onboarding with default model selection and OpenRouter OAuth flow |
 | **openclaw_bridge.py** | `OpenClawBridge` - Core integration for OpenClaw skill discovery and execution |
 | **openclaw_model.py** | OpenClaw model settings and configuration |
