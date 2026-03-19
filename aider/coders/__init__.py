@@ -18,24 +18,38 @@ from .udiff_simple import UnifiedDiffSimpleCoder
 from .wholefile_coder import WholeFileCoder
 from .wholefile_func_coder import WholeFileFunctionCoder
 
+# Also export factory classes
+from .coder_factory import (
+    CoderFactory,
+    CoderFactoryImpl,
+    get_coder_factory,
+    create_coder,
+)
+
 __all__ = [
-    HelpCoder,
+    # Coder classes
+    ArchitectCoder,
     AskCoder,
     Coder,
+    ContextCoder,
     EditBlockCoder,
     EditBlockFencedCoder,
     EditBlockFunctionCoder,
-    WholeFileCoder,
-    WholeFileFunctionCoder,
-    PatchCoder,
-    PatchFlexCoder,
-    UnifiedDiffCoder,
-    UnifiedDiffSimpleCoder,
-    SingleWholeFileFunctionCoder,
-    ArchitectCoder,
+    EditorDiffFencedCoder,
     EditorEditBlockCoder,
     EditorWholeFileCoder,
-    EditorDiffFencedCoder,
-    ContextCoder,
+    HelpCoder,
+    PatchCoder,
+    PatchFlexCoder,
+    SingleWholeFileFunctionCoder,
     ToolEnabledCoderV2,
+    UnifiedDiffCoder,
+    UnifiedDiffSimpleCoder,
+    WholeFileCoder,
+    WholeFileFunctionCoder,
+    # Factory classes
+    CoderFactory,
+    CoderFactoryImpl,
+    get_coder_factory,
+    create_coder,
 ]

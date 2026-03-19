@@ -1,33 +1,34 @@
-import os
+"""
+Minimal main.py entrypoint - thin compatibility shim.
+
+This is now reduced to the absolute minimum required for compatibility.
+All startup policy has been moved to bootstrap helpers.
+"""
+
 import sys
 import webbrowser
-from pathlib import Path
 
-try:
-    import git
-except ImportError:
-    git = None
-
-import shtab
-from prompt_toolkit.enums import EditingMode
-
-from aider import models, urls, utils
+from aider import urls, utils
 from aider.analytics import Analytics
 from aider.bootstrap import launch as launch_bootstrap
+from aider.bootstrap.git_handler import handle_git_root_recursion
 from aider.bootstrap.gui import launch_gui
+from aider.bootstrap.io_setup import (
+    format_and_log_settings,
+    resolve_file_arguments,
+    setup_io_with_error_handling,
+)
 from aider.bootstrap.launch import (
     apply_env_and_deprecated_args,
-    check_and_load_imports,
     check_gitignore,
-    check_streamlit_install,
+    check_and_load_imports,
     get_git_root,
-    guessed_wrong_repo,
     is_first_run_of_new_version,
     prepare_main_model,
     prepare_repo_and_runtime,
+    sanity_check_repo,
     should_background_semantic_index,
     should_preload_imports,
-    setup_git,
 )
 from aider.bootstrap.runtime import (
     attach_runtime_services,
@@ -41,8 +42,17 @@ from aider.bootstrap.session import (
     create_summarizer,
     finalize_streaming_settings,
 )
-from aider.format_settings import format_settings, scrub_sensitive_info
-from aider.hooks import create_hooks_manager
+from aider.bootstrap.update_flows import (
+    handle_analytics_setup,
+    handle_gui_flow,
+    handle_hooks_setup,
+    handle_shell_completions,
+    handle_ssl_setup,
+    handle_theme_setup,
+    handle_timeout_setup,
+    handle_update_flows,
+    setup_git,
+)
 from aider.io import InputOutput
 from aider.llm import litellm  # noqa: F401; properly init litellm on launch
 from aider.report import report_uncaught_exceptions
@@ -50,271 +60,111 @@ from aider.versioncheck import check_version, install_from_main_branch, install_
 
 from .dump import dump  # noqa: F401
 
+
+# Re-export for backward compatibility
 importlib_resources = launch_bootstrap.importlib_resources
 load_dotenv_files = launch_bootstrap.load_dotenv_files
 
 
 def main(argv=None, input=None, output=None, force_git_root=None, return_coder=False):
+    """Main entrypoint - thin compatibility shim."""
     report_uncaught_exceptions()
 
     if argv is None:
         argv = sys.argv[1:]
 
-    if git is None:
-        git_root = None
-    elif force_git_root:
-        git_root = force_git_root
-    else:
-        git_root = get_git_root()
-
-    parser, args, loaded_dotenvs, err = launch_bootstrap.parse_args(argv, git_root)
+    # Parse args and handle shell completions
+    git_root_hint = force_git_root or get_git_root()
+    parser, args, loaded_dotenvs, err = launch_bootstrap.parse_args(argv, git_root_hint)
     if err:
         return err
 
-    if args.shell_completions:
-        # Ensure parser.prog is set for shtab, though it should be by default
-        parser.prog = "aider"
-        print(shtab.complete(parser, shell=args.shell_completions))
-        sys.exit(0)
+    if shell_completion_result := handle_shell_completions(parser, args):
+        return shell_completion_result
 
-    if git is None:
-        args.git = False
+    # Handle git setup and recursion
+    git_root = handle_git_root_recursion(args, force_git_root=force_git_root)
+    if isinstance(git_root, int):
+        return git_root
 
-    if args.analytics_disable:
-        analytics = Analytics(permanently_disable=True)
-        print("Analytics have been permanently disabled.")
+    # Theme affects IO construction, so apply it before creating InputOutput.
+    handle_theme_setup(args)
 
-    if not args.verify_ssl:
-        import httpx
-
-        os.environ["SSL_VERIFY"] = ""
-        litellm._load_litellm()
-        litellm._lazy_module.client_session = httpx.Client(verify=False)
-        litellm._lazy_module.aclient_session = httpx.AsyncClient(verify=False)
-        # Set verify_ssl on the model_info_manager
-        models.model_info_manager.set_verify_ssl(False)
-
-    if args.timeout:
-        models.request_timeout = args.timeout
-
-    if args.dark_mode:
-        args.user_input_color = "#32FF32"
-        args.tool_error_color = "#FF3333"
-        args.tool_warning_color = "#FFFF00"
-        args.assistant_output_color = "#00FFFF"
-        args.code_theme = "monokai"
-
-    if args.light_mode:
-        args.user_input_color = "green"
-        args.tool_error_color = "red"
-        args.tool_warning_color = "#FFA500"
-        args.assistant_output_color = "blue"
-        args.code_theme = "default"
-
-    if return_coder and args.yes_always is None:
-        args.yes_always = True
-
-    editing_mode = EditingMode.VI if args.vim else EditingMode.EMACS
-
-    def get_io(pretty):
-        return InputOutput(
-            pretty,
-            args.yes_always,
-            args.input_history_file,
-            args.chat_history_file,
-            input=input,
-            output=output,
-            user_input_color=args.user_input_color,
-            tool_output_color=args.tool_output_color,
-            tool_warning_color=args.tool_warning_color,
-            tool_error_color=args.tool_error_color,
-            completion_menu_color=args.completion_menu_color,
-            completion_menu_bg_color=args.completion_menu_bg_color,
-            completion_menu_current_color=args.completion_menu_current_color,
-            completion_menu_current_bg_color=args.completion_menu_current_bg_color,
-            assistant_output_color=args.assistant_output_color,
-            code_theme=args.code_theme,
-            dry_run=args.dry_run,
-            encoding=args.encoding,
-            line_endings=args.line_endings,
-            llm_history_file=args.llm_history_file,
-            editingmode=editing_mode,
-            fancy_input=args.fancy_input,
-            multiline_mode=args.multiline,
-            notifications=args.notifications,
-            notifications_command=args.notifications_command,
-        )
-
-    io = get_io(args.pretty)
-    try:
-        io.rule()
-    except UnicodeEncodeError as err:
-        if not io.pretty:
-            raise err
-        io = get_io(False)
-        io.tool_warning("Terminal does not support pretty output (UnicodeDecodeError)")
+    # Setup IO with error handling
+    io = setup_io_with_error_handling(args, input, output, io_cls=InputOutput)
+    if isinstance(io, int):
+        return io
 
     err = apply_env_and_deprecated_args(args, io)
     if err:
         return err
 
-    analytics = Analytics(
-        logfile=args.analytics_log,
-        permanently_disable=args.analytics_disable,
-        posthog_host=args.analytics_posthog_host,
-        posthog_project_api_key=args.analytics_posthog_project_api_key,
+    # Handle SSL, timeout, and theme setup
+    handle_ssl_setup(args)
+    handle_timeout_setup(args)
+
+    # Setup analytics and hooks
+    analytics = handle_analytics_setup(args, io)
+
+    # Handle update/install/check flows
+    update_result = handle_update_flows(
+        args,
+        io,
+        analytics,
+        check_version_fn=check_version,
+        install_from_main_branch_fn=install_from_main_branch,
+        install_upgrade_fn=install_upgrade,
     )
-    if args.analytics is not False:
-        if analytics.need_to_ask(args.analytics):
-            io.tool_output(
-                "Aider respects your privacy and never collects your code, chat messages, keys or"
-                " personal info."
-            )
-            io.tool_output(f"For more info: {urls.analytics}")
-            disable = not io.confirm_ask(
-                "Allow collection of anonymous analytics to help improve aider?"
-            )
+    if update_result is not None:
+        return update_result
 
-            analytics.asked_opt_in = True
-            if disable:
-                analytics.disable(permanently=True)
-                io.tool_output("Analytics have been permanently disabled.")
+    # Handle GUI flow
+    gui_result = handle_gui_flow(
+        args,
+        io,
+        analytics,
+        return_coder=return_coder,
+        launch_gui_fn=launch_gui,
+    )
+    if gui_result is not False:
+        return gui_result
 
-            analytics.save_data()
-            io.tool_output()
+    hooks_manager = handle_hooks_setup(args, io)
 
-        # This is a no-op if the user has opted out
-        analytics.enable()
+    # Resolve file arguments
+    fnames, read_only_fnames, git_dname, file_arg_error = resolve_file_arguments(
+        args, io=io, git_root=git_root
+    )
+    if file_arg_error is not None:
+        analytics.event("exit", reason="Invalid directory input")
+        return file_arg_error
 
-    analytics.event("launched")
-
-    # Initialize hooks manager
-    hooks_manager = None
-    if args.hooks_dir or args.enable_skills:
-        hooks_manager = create_hooks_manager(io=io, verbose=args.verbose)
-
-        # Load hooks from directory if specified
-        if args.hooks_dir:
-            num_loaded = hooks_manager.load_hooks_from_directory(args.hooks_dir)
-            if args.verbose:
-                io.tool_output(f"Loaded {num_loaded} hook files from {args.hooks_dir}")
-
-        # Load skills if enabled
-        if args.enable_skills and args.skill_path:
-            hooks_manager.load_skills(args.skill_path)
-
-        # Execute on_init hooks
-        hooks_manager.execute("on_init", args=args, io=io)
-
-    if args.gui and not return_coder:
-        if not check_streamlit_install(io):
-            analytics.event("exit", reason="Streamlit not installed")
-            return
-        analytics.event("gui session")
-        launch_gui(argv)
-        analytics.event("exit", reason="GUI session ended")
-        return
+    # Handle git setup
+    if args.git and git_root:
+        git_root = setup_git(git_root, io)
 
     if args.verbose:
-        for fname in loaded_dotenvs:
+        for fname in loaded_dotenvs or []:
             io.tool_output(f"Loaded {fname}")
 
-    all_files = args.files + (args.file or [])
-    fnames = [str(Path(fn).resolve()) for fn in all_files]
-    read_only_fnames = []
-    for fn in args.read or []:
-        path = Path(fn).expanduser().resolve()
-        if path.is_dir():
-            read_only_fnames.extend(str(f) for f in path.rglob("*") if f.is_file())
-        else:
-            read_only_fnames.append(str(path))
+    format_and_log_settings(parser, args, io)
 
-    if len(all_files) > 1:
-        good = True
-        for fname in all_files:
-            if Path(fname).is_dir():
-                io.tool_error(f"{fname} is a directory, not provided alone.")
-                good = False
-        if not good:
-            io.tool_output(
-                "Provide either a single directory of a git repo, or a list of one or more files."
-            )
-            analytics.event("exit", reason="Invalid directory input")
-            return 1
-
-    git_dname = None
-    if len(all_files) == 1:
-        if Path(all_files[0]).is_dir():
-            if args.git:
-                git_dname = str(Path(all_files[0]).resolve())
-                fnames = []
-            else:
-                io.tool_error(f"{all_files[0]} is a directory, but --no-git selected.")
-                analytics.event("exit", reason="Directory with --no-git")
-                return 1
-
-    # We can't know the git repo for sure until after parsing the args.
-    # If we guessed wrong, reparse because that changes things like
-    # the location of the config.yml and history files.
-    if args.git and not force_git_root and git is not None:
-        right_repo_root = guessed_wrong_repo(io, git_root, fnames, git_dname)
-        if right_repo_root:
-            analytics.event("exit", reason="Recursing with correct repo")
-            return main(argv, input, output, right_repo_root, return_coder=return_coder)
-
-    if args.just_check_update:
-        update_available = check_version(io, just_check=True, verbose=args.verbose)
-        analytics.event("exit", reason="Just checking update")
-        return 0 if not update_available else 1
-
-    if args.install_main_branch:
-        success = install_from_main_branch(io)
-        analytics.event("exit", reason="Installed main branch")
-        return 0 if success else 1
-
-    if args.upgrade:
-        success = install_upgrade(io)
-        analytics.event("exit", reason="Upgrade completed")
-        return 0 if success else 1
-
-    if args.check_update:
-        check_version(io, verbose=args.verbose)
-
-    if args.git:
-        git_root = setup_git(git_root, io)
-        if args.gitignore:
-            check_gitignore(git_root, io)
-
-    if args.verbose:
-        show = format_settings(parser, args)
-        io.tool_output(show)
-
-    cmd_line = " ".join(sys.argv)
-    cmd_line = scrub_sensitive_info(args, cmd_line)
-    io.tool_output(cmd_line, log_only=True)
-
+    # Handle first run and imports
     is_first_run = is_first_run_of_new_version(io, verbose=args.verbose)
     if should_preload_imports(args, return_coder=return_coder):
         check_and_load_imports(io, is_first_run, verbose=args.verbose)
 
+    # Prepare main model
     handled, result, main_model, lint_cmds = prepare_main_model(
-        args=args,
-        argv=argv,
-        io=io,
-        analytics=analytics,
-        git_root=git_root,
+        args=args, argv=argv, io=io, analytics=analytics, git_root=git_root
     )
     if handled:
         return result
 
+    # Prepare repo and runtime
     handled, result, repo, runtime = prepare_repo_and_runtime(
-        args=args,
-        io=io,
-        analytics=analytics,
-        hooks_manager=hooks_manager,
-        main_model=main_model,
-        fnames=fnames,
-        git_dname=git_dname,
+        args=args, io=io, analytics=analytics, hooks_manager=hooks_manager,
+        main_model=main_model, fnames=fnames, git_dname=git_dname
     )
     if handled:
         return result
@@ -346,21 +196,14 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         analytics.event("exit", reason="Returning coder object")
         return coder
 
+    # Attach runtime services
     attach_runtime_services(args, coder, analytics, git_root, hooks_manager)
 
     handled, result = handle_pre_run_actions(
-        args=args,
-        io=io,
-        coder=coder,
-        commands=commands,
-        analytics=analytics,
-        main_model=main_model,
-        git_root=git_root,
-        is_first_run=is_first_run,
-        urls_module=urls,
-        webbrowser_module=webbrowser,
-        utils_module=utils,
-        fnames=fnames,
+        args=args, io=io, coder=coder, commands=commands, analytics=analytics,
+        main_model=main_model, git_root=git_root, is_first_run=is_first_run,
+        urls_module=urls, webbrowser_module=webbrowser, utils_module=utils,
+        fnames=fnames
     )
     if handled:
         return result

@@ -1,12 +1,14 @@
 import math
 
+from aider.llm import litellm
+from aider.reasoning_tags import remove_reasoning_content, replace_reasoning_tags
+from aider.utils import format_tokens
+
 
 class BaseCoderOutputMixin:
     """Incremental response rendering and usage-report helpers."""
 
     def live_incremental_response(self, final):
-        from .base_coder import replace_reasoning_tags
-
         show_resp = self.render_incremental_response(final)
         show_resp = replace_reasoning_tags(show_resp, self.reasoning_tag_name)
         self.mdstream.update(show_resp, final=final)
@@ -16,16 +18,12 @@ class BaseCoderOutputMixin:
 
     def remove_reasoning_content(self):
         """Remove reasoning content from the model's response."""
-        from .base_coder import remove_reasoning_content
-
         self.partial_response_content = remove_reasoning_content(
             self.partial_response_content,
             self.reasoning_tag_name,
         )
 
     def calculate_and_show_tokens_and_cost(self, messages, completion=None):
-        from .base_coder import format_tokens, litellm
-
         prompt_tokens = 0
         completion_tokens = 0
         cache_hit_tokens = 0

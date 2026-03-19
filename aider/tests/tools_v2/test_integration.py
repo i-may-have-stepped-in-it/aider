@@ -654,6 +654,8 @@ class TestToolRouterV2:
         assert router.mcp_manager is shared_services.mcp_manager
         assert router.terminal_watcher is shared_services.terminal_watcher
         assert router.resilient_executor is shared_services.resilient_executor
+        assert router.cost_tracker is shared_services.cost_tracker
+        assert shared_services.sandbox_type == router.config.sandbox_type
 
         router.shutdown()
 

@@ -9,16 +9,15 @@ import string
 # into human-readable language names (eg ``English``).
 try:
     from babel import Locale  # type: ignore
-except ImportError:  # Babel not installed – we will fall back to a small mapping
+except ImportError:  # Babel not installed - we will fall back to a small mapping
     Locale = None
 from pathlib import Path
 
-from aider import __version__, models, urls, utils
+from aider import __version__, urls, utils
 from aider.analytics import Analytics
 from aider.commands import Commands
 from aider.exceptions import LiteLLMExceptions
 from aider.history import ChatSummary
-from aider.indexers.semantic import SemanticIndexer
 from aider.io import InputOutput
 from aider.linter import Linter
 from aider.hooks import get_hooks_manager
@@ -45,6 +44,8 @@ from .base_coder_reply import BaseCoderReplyMixin
 from .base_coder_runtime import BaseCoderRuntimeMixin
 from .base_coder_shell import BaseCoderShellMixin
 from .chat_history import ChatHistory
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ class Coder(
 
     @classmethod
     def create(
-        self,
+        cls,
         main_model=None,
         edit_format=None,
         io=None,
@@ -195,77 +196,32 @@ class Coder(
         summarize_from_coder=True,
         **kwargs,
     ):
-        import aider.coders as coders
+        """
+        Factory method for creating Coder instances.
 
-        if not main_model:
-            if from_coder:
-                main_model = from_coder.main_model
-            else:
-                main_model = models.Model(models.DEFAULT_MODEL_NAME)
+        NOTE: This method is DEPRECATED and should not be used for new code.
+        Use get_coder_factory().create() instead for better separation of concerns.
 
-        if edit_format == "code":
-            edit_format = None
-        if edit_format is None:
-            if from_coder:
-                edit_format = from_coder.edit_format
-            else:
-                edit_format = main_model.edit_format
+        This method is maintained only for backward compatibility with existing code.
+        """
+        logger.warning(
+            "Coder.create() is deprecated. Use get_coder_factory().create() instead.",
+            stacklevel=2
+        )
+        from .coder_factory import UnknownEditFormat as FactoryUnknownEditFormat, get_coder_factory
 
-        if not io and from_coder:
-            io = from_coder.io
-
-        if from_coder:
-            use_kwargs = dict(from_coder.original_kwargs)  # copy orig kwargs
-
-            # If the edit format changes, we can't leave old ASSISTANT
-            # messages in the chat history. The old edit format will
-            # confused the new LLM. It may try and imitate it, disobeying
-            # the system prompt.
-            done_messages = from_coder.done_messages
-            if edit_format != from_coder.edit_format and done_messages and summarize_from_coder:
-                try:
-                    done_messages = from_coder.summarizer.summarize_all(done_messages)
-                except ValueError:
-                    # If summarization fails, keep the original messages and warn the user
-                    io.tool_warning(
-                        "Chat history summarization failed, continuing with full history"
-                    )
-
-            # Bring along context from the old Coder
-            update = dict(
-                fnames=list(from_coder.abs_fnames),
-                read_only_fnames=list(from_coder.abs_read_only_fnames),  # Copy read-only files
-                done_messages=done_messages,
-                cur_messages=from_coder.cur_messages,
-                runtime=from_coder.runtime,
-                analytics=from_coder.analytics,
-                aider_commit_hashes=from_coder.aider_commit_hashes,
-                commands=from_coder.commands.clone(),
-                total_cost=from_coder.total_cost,
-                ignore_mentions=from_coder.ignore_mentions,
-                total_tokens_sent=from_coder.total_tokens_sent,
-                total_tokens_received=from_coder.total_tokens_received,
-                file_watcher=from_coder.file_watcher,
-                system_prompt_override=from_coder.system_prompt_override,
+        factory = get_coder_factory()
+        try:
+            return factory.create(
+                main_model=main_model,
+                edit_format=edit_format,
+                io=io,
+                from_coder=from_coder,
+                summarize_from_coder=summarize_from_coder,
+                **kwargs
             )
-            use_kwargs.update(update)  # override to complete the switch
-            use_kwargs.update(kwargs)  # override passed kwargs
-
-            kwargs = use_kwargs
-            from_coder.ok_to_warm_cache = False
-
-        for coder in coders.__all__:
-            if hasattr(coder, "edit_format") and coder.edit_format == edit_format:
-                res = coder(main_model, io, **kwargs)
-                res.original_kwargs = dict(kwargs)
-                return res
-
-        valid_formats = [
-            str(c.edit_format)
-            for c in coders.__all__
-            if hasattr(c, "edit_format") and c.edit_format is not None
-        ]
-        raise UnknownEditFormat(edit_format, valid_formats)
+        except FactoryUnknownEditFormat as err:
+            raise UnknownEditFormat(err.edit_format, err.valid_formats) from err
 
     def clone(self, **kwargs):
         new_coder = Coder.create(from_coder=self, **kwargs)
@@ -439,10 +395,18 @@ class Coder(
         self.system_prompt_override = system_prompt_override
 
         self.use_semantic_index = use_semantic_index
-        self.semantic_indexer = None
+        self._semantic_indexer_wrapper = None
         self._semantic_index_kwargs = {}
-        self._background_semantic_index_enabled = False
-        self._background_semantic_index_started = False
+        self._background_semantic_index_enabled = bool(
+            self.repo
+            and background_semantic_index
+            and not os.environ.get("AIDER_DISABLE_BACKGROUND_SEMANTIC_INDEX")
+        )
+
+        # Initialize semantic index manager for unified ownership
+
+        if self.use_semantic_index:
+            self._semantic_indexer_wrapper = self._get_semantic_index_manager()
 
         self._sync_runtime_services()
         if hasattr(self.runtime, "bind_coder"):
@@ -726,37 +690,39 @@ class Coder(
                 self.io.tool_output(json.dumps(self.functions, indent=4))
 
     def get_semantic_indexer(self, start_background=False):
+        """
+        Get the semantic indexer, creating wrapper if needed.
+
+        This method now delegates to the runtime-owned service when available,
+        falling back to a coder-local wrapper for backward compatibility.
+        """
         if not self.use_semantic_index:
             return None
 
-        if self.semantic_indexer is None:
-            self.semantic_indexer = SemanticIndexer(self.root, **self._semantic_index_kwargs)
+        # Lazy-initialize the wrapper
+        if self._semantic_indexer_wrapper is None:
+            from aider.indexers.semantic_service import RuntimeBoundSemanticIndexer
+            self._semantic_indexer_wrapper = RuntimeBoundSemanticIndexer(self)
 
-        if start_background:
-            self._ensure_background_semantic_index()
+        return self._semantic_indexer_wrapper.get_indexer(start_background=start_background)
 
-        return self.semantic_indexer
+    def _get_semantic_index_manager(self):
+        """
+        Create the semantic index manager for unified ownership.
+
+        This method creates a RuntimeBoundSemanticIndexer that delegates
+        to the runtime-owned SemanticIndexService when available.
+        """
+        from aider.indexers.semantic_service import RuntimeBoundSemanticIndexer
+        return RuntimeBoundSemanticIndexer(self)
 
     def _ensure_background_semantic_index(self):
-        if not self._background_semantic_index_enabled or self._background_semantic_index_started:
+        """Ensure background indexing is started if enabled."""
+        if not self._background_semantic_index_enabled:
             return
 
-        self._background_semantic_index_started = True
-
-        def run_background_index():
-            try:
-                files = self.get_all_relative_files()
-                indexer = self.get_semantic_indexer()
-                if indexer is not None:
-                    indexer.update_index(files)
-            except Exception as e:
-                logger.error(f"Background indexing failed: {e}")
-
-        import threading
-
-        self.io.tool_output("Updating semantic index in background...")
-        indexing_thread = threading.Thread(target=run_background_index, daemon=True)
-        indexing_thread.start()
+        # Delegate to the wrapper which handles the background logic
+        self.get_semantic_indexer(start_background=True)
 
     def add_rel_fname(self, rel_fname):
         self.abs_fnames.add(self.abs_root_path(rel_fname))

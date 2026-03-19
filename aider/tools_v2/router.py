@@ -279,48 +279,64 @@ class ToolRouterV2:
         )
 
     def _init_infrastructure(self) -> None:
-        """Initialize core infrastructure components."""
-        shared_services = None
-        if (
-            self.runtime
-            and getattr(self.runtime, "is_session_runtime", False) is True
-            and hasattr(self.runtime, "get_tool_services")
-        ):
-            try:
-                shared_services = self.runtime.get_tool_services()
-            except Exception as e:
-                logger.debug(f"Failed to load shared runtime tool services: {e}")
+        """Initialize core infrastructure components by consuming runtime-owned services."""
+        shared_services = self._get_shared_services()
 
         if shared_services:
+            # Consume runtime-owned services to avoid duplicate instantiation
             self.async_executor = shared_services.async_executor
             self.compressor = shared_services.compressor
             self.openclaw_client = shared_services.openclaw_client
             self.mcp_manager = shared_services.mcp_manager
             self.terminal_watcher = shared_services.terminal_watcher
             self.resilient_executor = shared_services.resilient_executor
+            self.cost_tracker = shared_services.cost_tracker
+            self.sandbox = shared_services.sandbox
         else:
-            # AsyncExecutor: Bridges sync and async without nested event loops
-            # This is the KEY fix for the v1 nested asyncio.run() bug
-            self.async_executor = AsyncExecutor()
+            self._create_default_infrastructure()
 
-            # SmartCompressor: Semantic output compression (not naive truncation)
-            self.compressor = SmartCompressor()
+    def _get_shared_services(self):
+        """Get shared services from runtime if available."""
+        if (
+            self.runtime
+            and getattr(self.runtime, "is_session_runtime", False) is True
+            and hasattr(self.runtime, "get_tool_services")
+        ):
+            try:
+                return self.runtime.get_tool_services(self.config.sandbox_type)
+            except Exception as e:
+                logger.debug(f"Failed to load shared runtime tool services: {e}")
+        return None
 
-            # OpenClawToolClient: Remote tool execution
-            self.openclaw_client = OpenClawToolClient()
+    def _get_hooks_manager(self):
+        """Get hooks from the session runtime first, else local compatibility fallback."""
+        if self.runtime is not None:
+            return getattr(self.runtime, "hooks_manager", None)
+        return getattr(self.coder, "hooks_manager", None)
 
-            # MCPManager: Support for external MCP servers
-            self.mcp_manager = MCPManager()
+    def _create_default_infrastructure(self) -> None:
+        """Create default infrastructure when runtime services are not available."""
+        # AsyncExecutor: Bridges sync and async without nested event loops
+        self.async_executor = AsyncExecutor()
 
-            # TerminalWatcher: Real-time background process monitoring
-            self.terminal_watcher = TerminalWatcher()
+        # SmartCompressor: Semantic output compression (not naive truncation)
+        self.compressor = SmartCompressor()
 
-            # ResilientExecutor: Circuit breakers, retries, rate limiting
-            self.resilient_executor = ResilientExecutor(
-                circuit_breaker=CircuitBreakers.tool_execution(),
-                rate_limiter=RateLimiters.aggressive(),
-                backoff=BackoffStrategies.standard(),
-            )
+        # OpenClawToolClient: Remote tool execution
+        self.openclaw_client = OpenClawToolClient()
+
+        # MCPManager: Support for external MCP servers
+        self.mcp_manager = MCPManager()
+
+        # TerminalWatcher: Real-time background process monitoring
+        self.terminal_watcher = TerminalWatcher()
+
+        # ResilientExecutor: Circuit breakers, retries, rate limiting
+        self.resilient_executor = ResilientExecutor(
+            circuit_breaker=CircuitBreakers.tool_execution(),
+            rate_limiter=RateLimiters.aggressive(),
+            backoff=BackoffStrategies.standard(),
+        )
 
         # Sandbox: Isolated execution environment
         self.sandbox = create_sandbox(self.config.sandbox_type)
@@ -328,8 +344,7 @@ class ToolRouterV2:
         # AccurateCostTracker: Precise cost tracking for budget management
         self.cost_tracker = AccurateCostTracker(
             max_budget=self.config.max_cost,
-            hooks=getattr(self.runtime, "hooks_manager", None)
-            or getattr(self.coder, "hooks_manager", None),
+            hooks=self._get_hooks_manager(),
         )
 
     def _init_tool_registry(self) -> None:
@@ -373,9 +388,7 @@ class ToolRouterV2:
 
     def _trigger_ui_tool(self, tool_name: str, message: str, progress: float = None):
         """Notify UI of tool execution progress."""
-        hooks_manager = getattr(self.runtime, "hooks_manager", None) or getattr(
-            self.coder, "hooks_manager", None
-        )
+        hooks_manager = self._get_hooks_manager()
         if hooks_manager:
             from aider.hooks_manager import HookPoint
 

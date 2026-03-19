@@ -248,7 +248,13 @@ class TestCoder(unittest.TestCase):
     def test_semantic_indexer_is_lazy_on_startup(self):
         io = InputOutput(pretty=False, yes=True)
 
-        with patch("aider.coders.base_coder.SemanticIndexer") as mock_indexer:
+        with patch(
+            "aider.indexers.semantic_service.SemanticIndexService.create_for_coder"
+        ) as mock_create_service:
+            mock_service = MagicMock()
+            mock_indexer = MagicMock()
+            mock_service._get_indexer.return_value = mock_indexer
+            mock_create_service.return_value = mock_service
             coder = Coder.create(
                 self.GPT35,
                 None,
@@ -257,11 +263,11 @@ class TestCoder(unittest.TestCase):
                 use_semantic_index=True,
             )
 
-            mock_indexer.assert_not_called()
+            mock_create_service.assert_not_called()
             indexer = coder.get_semantic_indexer()
 
-        mock_indexer.assert_called_once_with(coder.root)
-        self.assertIs(indexer, mock_indexer.return_value)
+        mock_create_service.assert_called_once_with(coder)
+        self.assertIs(indexer, mock_indexer)
 
     def test_background_semantic_index_starts_on_first_use(self):
         with GitTemporaryDirectory():
@@ -273,9 +279,14 @@ class TestCoder(unittest.TestCase):
             io = InputOutput(pretty=False, yes=True)
 
             with (
-                patch("aider.coders.base_coder.SemanticIndexer") as mock_indexer,
-                patch("threading.Thread") as mock_thread,
+                patch(
+                    "aider.indexers.semantic_service.SemanticIndexService.create_for_coder"
+                ) as mock_create_service,
             ):
+                mock_service = MagicMock()
+                mock_indexer = MagicMock()
+                mock_service._get_indexer.return_value = mock_indexer
+                mock_create_service.return_value = mock_service
                 coder = Coder.create(
                     self.GPT35,
                     None,
@@ -284,13 +295,12 @@ class TestCoder(unittest.TestCase):
                     use_semantic_index=True,
                 )
 
-                mock_indexer.assert_not_called()
-                mock_thread.assert_not_called()
+                mock_create_service.assert_not_called()
 
                 coder.get_semantic_indexer(start_background=True)
 
-        mock_indexer.assert_called_once_with(coder.root)
-        mock_thread.assert_called_once()
+        mock_create_service.assert_called_once_with(coder)
+        mock_service.start_background_indexing.assert_called_once()
 
     def test_send_uses_subclass_final_assistant_output_hook(self):
         class HookedCoder(Coder):
@@ -364,6 +374,18 @@ class TestCoder(unittest.TestCase):
         runtime.bind_hooks_manager(new_hooks)
 
         self.assertIs(coder.hooks_manager, new_hooks)
+        self.assertIs(new_hooks.io, runtime.io)
+
+    def test_runtime_hooks_manager_rebind_updates_shared_tool_services(self):
+        from aider.session_runtime import SessionRuntime
+
+        runtime = SessionRuntime.create(io=InputOutput(pretty=False, yes=True))
+        shared_services = runtime.get_tool_services()
+        new_hooks = MagicMock()
+
+        runtime.bind_hooks_manager(new_hooks)
+
+        self.assertIs(shared_services.cost_tracker.hooks, new_hooks)
         self.assertIs(new_hooks.io, runtime.io)
 
     def test_runtime_hooks_manager_fallback_uses_bound_hooks_manager(self):
