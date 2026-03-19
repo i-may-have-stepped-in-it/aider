@@ -77,15 +77,30 @@ aider/
 Aider supports multiple edit formats through the `coders/` module:
 
 - **EditBlockCoder** - Default format using search/replace blocks
+- **EditBlockFencedCoder** - Edit blocks with fenced code format
+- **EditBlockFuncCoder** - Edit blocks via function calling
 - **WholeFileCoder** - Replace entire file contents
+- **WholeFileFuncCoder** - Whole file via function calling
 - **UnifiedDiffCoder** - Unified diff format
+- **UdiffSimpleCoder** - Simplified unified diff
 - **PatchCoder** - Patch file format
+- **PatchFlexCoder** - Flexible patch format
+- **ContextCoder** - Context-aware coding
 - **ArchitectCoder** - Architect mode for planning
 - **ToolEnabledCoderV2** - Tool use via function calling (production)
 - **AskCoder** - Read-only Q&A mode
 - **HelpCoder** - Built-in help system
+- **EditorEditBlockCoder** - Editor-optimized edit blocks
+- **EditorWholeCoder** - Editor-optimized whole file
 
 Each coder has an associated prompts file (e.g., `editblock_prompts.py`).
+
+#### Coder Utilities
+
+- **search_replace.py** - Search/replace logic for edit blocks
+- **shell.py** - Shell command execution helpers
+- **chat_chunks.py** - Chat message chunking
+- **chat_history.py** - Chat history management
 
 ### Bootstrap Architecture (`bootstrap/`)
 
@@ -421,6 +436,26 @@ Additional core modules providing essential functionality:
 | **versioncheck.py** | PyPI version checking with auto-upgrade support |
 | **voice.py** | `Voice` - Audio recording and Whisper transcription |
 | **watch.py** | `FileWatcher` - Watches files for "AI!" / "AI?" comment triggers |
+| **watch_prompts.py** | Prompts for file watching feature |
+| **waiting.py** | `Spinner` / `WaitingSpinner` - Terminal progress indicators |
+| **report.py** | GitHub issue reporting with automatic traceback collection |
+| **run_cmd.py** | Command execution with pexpect/subprocess (supports interactive shell) |
+| **special.py** | `ROOT_IMPORTANT_FILES` - List of important config/documentation files |
+| **deprecated.py** | Deprecated model shortcut arguments (`--opus`, `--sonnet`, etc.) |
+| **diffs.py** | Diff utilities with progress bars for partial file updates |
+| **dump.py** | Debug utility for printing variable values with caller context |
+| **format_settings.py** | Settings formatting with sensitive info scrubbing (API keys) |
+| **help_pats.py** | File patterns to exclude from help indexing |
+| **hooks_config.py** | Hook configuration parsing and validation |
+| **hooks_example.py** | Example hook implementations |
+
+### Resources (`resources/`)
+
+Static resource files bundled with the package:
+
+- **model-metadata.json** - LLM model metadata for capability detection
+- **model-settings.yml** - Default model settings (temperature, max tokens, etc.)
+- **openclaw-settings.yml** - OpenClaw-specific model configurations
 
 ### Additional Skills
 
