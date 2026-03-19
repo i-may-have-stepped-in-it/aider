@@ -57,7 +57,18 @@ Planning changes...
 3. Update error responses in API
 ```
 
-### 3. Reviewer Phase
+### 3. Security Scan Phase
+
+Scans the plan for security vulnerabilities:
+
+```
+Scanning for security issues...
+✓ No secrets detected
+✓ No injection vulnerabilities
+✓ No path traversal risks
+```
+
+### 4. Reviewer Phase
 
 Self-critiques the plan before execution:
 
@@ -68,7 +79,7 @@ Reviewing plan...
 ✓ API changes are backward compatible
 ```
 
-### 4. Editor Phase
+### 5. Editor Phase
 
 Executes the plan with proper formatting:
 
@@ -79,7 +90,7 @@ Implementing changes...
 ✓ Updated models.py
 ```
 
-### 5. Self-Correction Phase
+### 6. Self-Correction Phase
 
 If tests are provided, verifies and retries:
 

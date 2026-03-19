@@ -18,6 +18,11 @@ Skills provide high-level capabilities for common development tasks:
 
 ## Built-in Skills
 
+Aider includes 100+ skills that are **auto-discovered** from:
+- Python modules (`aider/skills/*.py`)
+- ACP agent configurations (`~/.acpx/config.json`)
+- YAML definitions (`~/.config/aider/skills/*.yaml`)
+
 | Skill | Description | Parallel |
 |-------|-------------|----------|
 | `code-review` | Parallel code review | ✅ |
@@ -28,6 +33,8 @@ Skills provide high-level capabilities for common development tasks:
 | `documentation` | Generate documentation | ✅ |
 | `architecture-docs` | Architecture documentation | ✅ |
 | `coverage-analysis` | Analyze test coverage | ✅ |
+| `swarm` | Multi-agent swarm coordination | ✅ |
+| `skill-creator` | Create new skills dynamically | ✅ |
 
 ## Using Skills
 

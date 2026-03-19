@@ -216,11 +216,19 @@ agent-timeout: 300
 ### Key Files
 
 - `aider/agents/agent.py`: Core agent types
-- `aider/agents/registry.py`: Agent tracking
+- `aider/agents/base.py`: Base agent classes
+- `aider/agents/registry.py`: Agent tracking with circuit breaker
 - `aider/agents/executor.py`: Agent execution
 - `aider/agents/commands.py`: CLI commands
 - `aider/agents/integration.py`: Aider integration
 - `aider/agents/service.py`: AgentService for runtime integration (v2.1.0)
+- `aider/agents/governor.py`: Mission governor for safety limits (v2.1.0)
+- `aider/agents/decomposition.py`: Task decomposer for complex tasks (v2.1.0)
+- `aider/agents/dependency_resolver.py`: Dependency graph builder (v2.1.0)
+- `aider/agents/task_board.py`: File-locked task coordination (v2.1.0)
+- `aider/agents/split_pane_display.py`: Multi-pane terminal display (v2.1.0)
+- `aider/agents/gateway.py`: Gateway for agent communication
+- `aider/agents/loop.py`: Agent coordination loop
 
 ### Integration Points
 
