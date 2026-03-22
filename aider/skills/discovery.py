@@ -15,8 +15,6 @@ import pkgutil
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-from .base import Skill
-
 logger = logging.getLogger(__name__)
 
 

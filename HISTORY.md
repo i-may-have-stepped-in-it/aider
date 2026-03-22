@@ -2,6 +2,23 @@
 
 ### main branch
 
+- **Async Architecture v2.2.0 - Persistent Prompt by Default**:
+  - Migrated to async/await as the default execution model (no `AIDER_ASYNC` env var needed).
+  - Implemented `AsyncRunningPromptManager` for true background generation with concurrent input.
+  - Added `AsyncPromptDelegate` for Tab (queue), Enter (steer), and Escape (cancel) during generation.
+  - Integrated async infrastructure: `GenerationState`, `MessageQueue`, `AsyncEvent`, `TaskManager`.
+  - Created comprehensive async test suite with 34 tests in `tests/async/` and `tests/test_async_integration.py`.
+  - All async tests passing; backward compatibility maintained via sync wrappers.
+  - Removed `AIDER_ASYNC` mode switch - async is now the only execution path.
+
+- **Enterprise-Grade UI Modernization (Phases 1-5)**:
+  - Implemented a persistent, two-line status bar in `aider/io.py` with real-time metrics (context usage, costs, git branch).
+  - Added thread-safe "toast" notifications for transient status updates.
+  - Introduced Codex-style non-blocking prompt: input remains active during LLM generation.
+  - Added prompt queuing (Tab) and steering/interruption (Enter/Esc) during streaming.
+  - Implemented Kimi-style Live View in `aider/live_view.py` with support for `<thinking>` blocks and animated tool-call spinners.
+  - Integrated context-aware footer hints that adapt to the agent's state (Idle, Generating, Draft).
+  - All 47 modernization tests passing in `tests/basic/test_ui_modernization.py`.
 - Added support for Claude 4.5/4.6 models and updated model aliases (sonnet/haiku/opus).
 - Expanded Gemini model support with 2.5 Flash and Flash‑Lite, added Gemini 3 preview models, and updated the flash alias to gemini/gemini-flash-latest.
 - Added DeepSeek Reasoner model and updated DeepSeek model metadata with costs and prompt caching.

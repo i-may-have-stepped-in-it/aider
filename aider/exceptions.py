@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 
 from aider.dump import dump  # noqa: F401
@@ -17,7 +18,7 @@ EXCEPTIONS = [
     ExInfo(
         "AuthenticationError",
         False,
-        "The API provider is not able to authenticate you. Check your API key.",
+        "Authentication failed. Check your API key or credentials.",
     ),
     ExInfo("AzureOpenAIError", True, None),
     ExInfo("BadGatewayError", True, "The API provider's servers are down or overloaded."),
@@ -43,7 +44,7 @@ EXCEPTIONS = [
     ExInfo(
         "RateLimitError",
         True,
-        "The API provider has rate limited you. Try again later or check your quotas.",
+        "Rate limit hit. Waiting before retry...",
     ),
     ExInfo("RouterRateLimitError", True, None),
     ExInfo("ServiceUnavailableError", True, "The API provider's servers are down or overloaded."),
@@ -110,4 +111,66 @@ class LiteLLMExceptions:
                 )
             # Fall through to default APIError handling if not the specific credits error
 
+        # Enhance RateLimitError with provider-specific guidance
+        if ex.__class__ is litellm.RateLimitError:
+            help_msg = self.get_rate_limit_help(str(ex))
+            return ExInfo("RateLimitError", True, help_msg)
+
+        # Enhance AuthenticationError with provider-specific guidance
+        if ex.__class__ is litellm.AuthenticationError:
+            err_str = str(ex).lower()
+            if "openai" in err_str:
+                return ExInfo(
+                    "AuthenticationError",
+                    False,
+                    "OpenAI API key invalid. Set OPENAI_API_KEY environment variable.",
+                )
+            if "anthropic" in err_str or "claude" in err_str:
+                return ExInfo(
+                    "AuthenticationError",
+                    False,
+                    "Anthropic API key invalid. Set ANTHROPIC_API_KEY environment variable.",
+                )
+            if "gemini" in err_str or "google" in err_str:
+                return ExInfo(
+                    "AuthenticationError",
+                    False,
+                    "Google API key invalid. Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable.",
+                )
+            if "openrouter" in err_str:
+                return ExInfo(
+                    "AuthenticationError",
+                    False,
+                    "OpenRouter API key invalid. Set OPENROUTER_API_KEY environment variable.",
+                )
+
         return self.exceptions.get(ex.__class__, ExInfo(None, None, None))
+
+    # Pre-compile regex for performance
+    _RETRY_AFTER_RE = re.compile(r'retry[_-]?after[:\s]*(\d+)', re.IGNORECASE)
+
+    def get_rate_limit_help(self, err_str: str) -> str:
+        """Get provider-specific help for rate limit errors."""
+        err_lower = err_str.lower()
+        
+        # Extract retry-after if available
+        retry_match = self._RETRY_AFTER_RE.search(err_str)
+        if retry_match:
+            seconds = int(retry_match.group(1))
+            if seconds < 60:
+                return f"Rate limit: Retry after {seconds}s"
+            else:
+                mins = seconds // 60
+                return f"Rate limit: Retry after {mins}m {seconds % 60}s"
+        
+        # Provider-specific guidance
+        if "openrouter" in err_lower:
+            return "OpenRouter rate limit. Try: 1) Add credits, 2) Wait 1min, 3) Check limits at openrouter.ai"
+        if "anthropic" in err_lower or "claude" in err_lower:
+            return "Anthropic rate limit. Try: 1) Wait 1min, 2) Check limits at console.anthropic.com"
+        if "openai" in err_lower:
+            return "OpenAI rate limit. Try: 1) Wait 1min, 2) Check usage at platform.openai.com"
+        if "gemini" in err_lower or "google" in err_lower:
+            return "Google rate limit. Try: 1) Wait 1min, 2) Check quotas at ai.google.dev"
+        
+        return "Rate limit hit. Waiting before retry..."

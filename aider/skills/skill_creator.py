@@ -18,7 +18,7 @@ Or with more detail:
 import re
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from .base import Skill, SkillContext, SkillResult
 from .agent_skill import AgentSkillMixin

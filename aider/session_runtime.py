@@ -44,6 +44,7 @@ class SessionRuntime:
     tool_services: object = None
     semantic_index_service: object = None
     _bound_coders: object = None
+    max_budget: float = 5.0
 
     def __post_init__(self):
         if self._bound_coders is None:
@@ -69,6 +70,7 @@ class SessionRuntime:
         skill_registry=None,
         async_executor=None,
         resolve_defaults=True,
+        max_budget=5.0,
     ):
         """Create a session runtime with explicit default shared services."""
         if hooks_manager is None and resolve_defaults:
@@ -87,6 +89,7 @@ class SessionRuntime:
             hooks_manager=hooks_manager,
             skill_registry=skill_registry,
             async_executor=async_executor,
+            max_budget=max_budget,
         )
 
     def get_tool_services(self, sandbox_type="auto"):
@@ -123,7 +126,7 @@ class SessionRuntime:
             ),
             sandbox=create_sandbox(sandbox_type),
             cost_tracker=AccurateCostTracker(
-                max_budget=5.0,
+                max_budget=self.max_budget,
                 hooks=self.hooks_manager,
             ),
             sandbox_type=sandbox_type,

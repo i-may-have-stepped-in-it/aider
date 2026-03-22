@@ -36,10 +36,13 @@ This tracker fixes all of these issues.
 """
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ModelPricing:
@@ -759,11 +762,6 @@ class AccurateCostTracker:
     # =========================================================================
     # Backward Compatibility Methods (for v1 CostTracker API)
     # =========================================================================
-
-    @property
-    def total_cost(self) -> float:
-        """Backward compatibility: total cost consumed (alias for consumed_budget)."""
-        return self.consumed_budget
 
     def is_budget_exceeded(self) -> bool:
         """Backward compatibility: check if budget is exceeded."""

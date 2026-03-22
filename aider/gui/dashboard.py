@@ -1,10 +1,8 @@
-import time
 from typing import Any, Dict, Optional
-from rich.console import Console, RenderableType
-from rich.live import Live
+from rich.console import Console
 from rich.layout import Layout
+from rich.live import Live
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
 from rich.text import Text
 from rich.columns import Columns

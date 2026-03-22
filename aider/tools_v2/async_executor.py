@@ -354,8 +354,8 @@ class AsyncExecutor:
             True if called from within a running event loop, False otherwise.
         """
         try:
-            loop = asyncio._get_running_loop()
-            return loop is not None
+            loop = asyncio.get_running_loop()
+            return True
         except RuntimeError:
             # No running loop in current thread
             return False
@@ -774,7 +774,10 @@ def temporary_event_loop():
         ...     result = loop.run_until_complete(some_async_func())
     """
     # Save the current event loop if any
-    old_loop = asyncio._get_running_loop()
+    try:
+        old_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        old_loop = None
 
     # Create and set a new event loop
     loop = asyncio.new_event_loop()

@@ -103,13 +103,15 @@ class MarkdownStream:
     min_delay = 1.0 / 20  # Minimum time between updates (20fps)
     live_window = 6  # Number of lines to keep visible at bottom during streaming
 
-    def __init__(self, mdargs=None):
+    def __init__(self, mdargs=None, io=None):
         """Initialize the markdown stream.
 
         Args:
             mdargs (dict, optional): Additional arguments to pass to rich Markdown renderer
+            io (InputOutput, optional): InputOutput instance for LiveRichConsole support
         """
         self.printed = []  # Stores lines that have already been printed
+        self.io = io
 
         if mdargs:
             self.mdargs = mdargs
@@ -119,8 +121,12 @@ class MarkdownStream:
         # Defer Live creation until the first update.
         self.live = None
         self._live_started = False
-        self.console = Console()
+        from rich.console import Console
+        self.console = io.console if io else Console()
         self.live_window = self._compute_live_window()
+        self.live_mode = True
+        # For Option B: accumulate content when not using Live
+        self._accumulated_text = ""
 
     def _compute_live_window(self):
         """Choose a live window that fits the current terminal instead of a tiny fixed footer."""
@@ -172,6 +178,18 @@ class MarkdownStream:
         Markdown going to the console works better in terminal scrollback buffers.
         The live window doesn't play nice with terminal scrollback.
         """
+        # If we have a LiveRichConsole, use it instead of internal Live
+        from aider.ui.live_output import LiveRichConsole
+        if isinstance(self.console, LiveRichConsole):
+            self._update_no_live(text, final)
+            # LiveRichConsole will handle its own throttling via LiveOutputManager
+            return
+
+        # If live_mode is False, use streaming output without Live display
+        if not self.live_mode:
+            self._update_no_live(text, final)
+            return
+
         # On the first call, stop the spinner and start the Live renderer
         if not getattr(self, "_live_started", False):
             self.live_window = self._compute_live_window()
@@ -214,17 +232,15 @@ class MarkdownStream:
             show = num_lines - num_printed
 
             # Skip if no new lines to show above live window
-            if show <= 0:
-                return
+            if show > 0:
+                # Get the new lines and display them
+                show = lines[num_printed:num_lines]
+                show = "".join(show)
+                show = Text.from_ansi(show)
+                self.live.console.print(show)  # to the console above the live area
 
-            # Get the new lines and display them
-            show = lines[num_printed:num_lines]
-            show = "".join(show)
-            show = Text.from_ansi(show)
-            self.live.console.print(show)  # to the console above the live area
-
-            # Update our record of printed lines
-            self.printed = lines[:num_lines]
+                # Update our record of printed lines
+                self.printed = lines[:num_lines]
 
         # Handle final update cleanup
         if final:
@@ -240,6 +256,41 @@ class MarkdownStream:
         rest = Text.from_ansi(rest)
         self.live.update(rest)
         self.live.refresh()
+
+    def _update_no_live(self, text: str, final: bool):
+        """Update without using Rich Live - for Option B background mode.
+        
+        Streams content directly to console using patch_stdout for proper
+        positioning above the persistent prompt.
+        """
+        from prompt_toolkit.patch_stdout import patch_stdout
+        
+        # Get new content since last update
+        new_content = text[len(self._accumulated_text):]
+        self._accumulated_text = text
+        
+        if not new_content:
+            if final:
+                # Print final complete markdown
+                with patch_stdout(raw=True):
+                    show = NoInsetMarkdown(text, **self.mdargs)
+                    self.console.print(show)
+                self._accumulated_text = ""
+            return
+        
+        # For streaming, just print the new raw text
+        # This gives immediate feedback without waiting for full markdown render
+        with patch_stdout(raw=True):
+            # Print new content as plain text for responsiveness
+            self.console.print(new_content, end="")
+        
+        if final:
+            # Final render: clear line and print formatted markdown
+            with patch_stdout(raw=True):
+                self.console.print()  # Newline after streaming text
+                show = NoInsetMarkdown(text, **self.mdargs)
+                self.console.print(show)
+            self._accumulated_text = ""
 
     def find_minimal_suffix(self, text, match_lines=50):
         """

@@ -6,11 +6,10 @@ as sub-agents for specialized tasks.
 """
 
 import asyncio
-import json
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .base import Skill, SkillContext, SkillResult
 from .agent_skill import AgentSkillMixin

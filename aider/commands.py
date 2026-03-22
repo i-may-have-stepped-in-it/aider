@@ -39,16 +39,84 @@ class Commands(
     command_aliases = {
         "?": "help",
         "search": "search-web",
+        "a": "add",
+        "d": "drop",
+        "ro": "read-only",
+        "c": "commit",
+        "u": "undo",
+        "q": "exit",
+        "quit": "exit",
+        "x": "exit",
+        "gs": "gs",  # git status shorthand
+        "gd": "gd",  # git diff shorthand
+        "df": "diff",  # diff shorthand
+        "ctx": "context",  # context shorthand
+        "files": "context",  # files shorthand
+        "install-hooks": "install-hook",
+        "uninstall-hooks": "uninstall-hook",
     }
     command_usages = {
         "add": "/add <file|glob> [more files...]",
         "drop": "/drop <file|glob> [more files...]",
         "read-only": "/read-only <file|glob> [more files...]",
+        "reset": "/reset [--force]",
+        "save": "/save [filename]",
+        "load": "/load <filename>",
+        "reload": "/reload [--force] [--dry-run]",
+        "find": "/find <pattern>",
+        "exclude": "/exclude <pattern>",
+        "size": "/size",
+        "map": "/map",
+        "rename": "/rename <old> <new>",
+        "recent": "/recent",
+        "untracked": "/untracked",
+        "grep": "/grep <pattern>",
+        "archive": "/archive",
+        "pin": "/pin [file]",
+        "checkpoint": "/checkpoint [message|list|restore <n>]",
+        "open": "/open <file>",
+        "tail": "/tail [-n N] <file>",
+        "head": "/head [-n N] <file>",
+        "wc": "/wc [file]",
+        "tree": "/tree [-L N]",
+        "compare": "/compare <file1> <file2>",
+        "backup": "/backup",
+        "verify": "/verify",
+        "history": "/history [search term]",
+        "export": "/export [filename]",
+        "install-hook": "/install-hook [--force]",
+        "uninstall-hook": "/uninstall-hook",
+        "undo": "/undo [--force]",
+        "test": "/test <command> | /test --history",
+        "diff": "/diff",
+        "merge": "/merge",
+        "blame": "/blame [-n N] <file>",
+        "context": "/context",
         "git": "/git <git args...>",
         "run": "/run <shell command>",
         "web": "/web <url>",
+        "wiki": "/wiki [topic]",
         "search-web": "/search-web <query>",
         "models": "/models <partial model name>",
+        "config": "/config [--all]",
+        "cost": "/cost",
+        "stats": "/stats",
+        "timer": "/timer [start|stop|total|reset]",
+        "bookmark": "/bookmark [add|list|goto|remove|clear]",
+        "metrics": "/metrics",
+        "activity": "/activity",
+        "echo": "/echo <text>",
+        "todo": "/todo [add|scan|list|done|clear]",
+        "notify": "/notify [on|off|test]",
+        "template": "/template [name]",
+        "copy": "/copy",
+        "bug": "/bug [description]",
+        "issue": "/issue [title]",
+        "pr": "/pr [title]",
+        "shortcuts": "/shortcuts",
+        "suggest": "/suggest",
+        "settings": "/settings",
+        "welcome": "/welcome",
         "index": "/index add <dir> | /index search <query> | /index status",
         "mcp": "/mcp add <name> <cmd...> | /mcp list | /mcp remove <name>",
         "skill": "/skill list | /skill run <skill> [...] | /skill info <skill>",
@@ -222,6 +290,10 @@ class Commands(
         models = litellm.model_cost.keys()
         return models
 
+    def completions_help(self):
+        """Return command names for /help tab completion."""
+        return list(self.get_command_metadata().keys())
+
     def parse_shell_like_args(self, args, command_name=None):
         try:
             return shlex.split(args)
@@ -239,6 +311,8 @@ class Commands(
         return parts
 
     def is_command(self, inp):
+        if not inp:
+            return False
         return inp[0] in "/!"
 
     def get_raw_completions(self, cmd):

@@ -70,10 +70,14 @@ class A2AMessageBus:
     async def _broadcast(self, message: A2AMessage) -> bool:
         """Broadcast to all agents except sender."""
         delivered = False
-        for agent_id, handlers in self._handlers.items():
+        # Snapshot to avoid modification during iteration
+        handlers_snapshot = list(self._handlers.items())
+        for agent_id, handlers in handlers_snapshot:
             if agent_id == message.sender_id:
                 continue
-            for handler in handlers:
+            # Copy handlers list to avoid modification during iteration
+            handlers_copy = list(handlers)
+            for handler in handlers_copy:
                 try:
                     if asyncio.iscoroutinefunction(handler):
                         await handler(message)

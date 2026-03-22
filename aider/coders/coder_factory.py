@@ -7,10 +7,9 @@ This improves separation of concerns and makes the creation process more testabl
 """
 
 import logging
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List
 
 from aider import models
-from aider.history import ChatSummary
 from aider.io import InputOutput
 
 logger = logging.getLogger(__name__)
@@ -166,6 +165,10 @@ class CoderFactoryImpl:
             total_tokens_received=from_coder.total_tokens_received,
             file_watcher=from_coder.file_watcher,
             system_prompt_override=from_coder.system_prompt_override,
+            # Token caching statistics
+            total_cache_hit_tokens=getattr(from_coder, 'total_cache_hit_tokens', 0),
+            total_cache_write_tokens=getattr(from_coder, 'total_cache_write_tokens', 0),
+            total_uncached_input_tokens=getattr(from_coder, 'total_uncached_input_tokens', 0),
         )
 
     def find_coder_class(self, edit_format: str):

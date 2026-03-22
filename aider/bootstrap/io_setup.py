@@ -8,7 +8,7 @@ main.py to remain a thin compatibility shim.
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Optional
 
 from aider.bootstrap.launch import (
     should_background_semantic_index as launch_should_background_semantic_index,

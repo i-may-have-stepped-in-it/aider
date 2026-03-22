@@ -1,0 +1,25 @@
+{
+  "reviewer": "gemini",
+  "approve": true,
+  "confidence": "high",
+  "issues": [
+    {
+      "file": "aider/async_compat.py",
+      "line": 76,
+      "severity": "warning",
+      "message": "AsyncLock still has potential for confusion between sync and async contexts. Consider using separate locks for truly distinct use cases."
+    },
+    {
+      "file": "aider/async_running_prompt.py",
+      "line": 77,
+      "severity": "nit",
+      "message": "get_queued_messages() drains queue without lock - theoretically safe with asyncio.Queue but worth documenting."
+    }
+  ],
+  "suggestions": [
+    "Add more documentation on the async architecture for future maintainers",
+    "Consider adding metrics/monitoring for async operations (queue depth, wait times)",
+    "Add chaos tests that simulate event loop death/recovery"
+  ],
+  "blocking": []
+}

@@ -4,6 +4,8 @@ Runtime dispatch helpers extracted from aider.main.
 
 from pathlib import Path
 
+from aider.coders.coder_factory import create_coder
+
 
 def attach_runtime_services(args, coder, analytics, git_root, hooks_manager):
     """Attach file watching, clipboard support, and hooks to the coder."""
@@ -215,8 +217,6 @@ def dispatch_session_mode(args, io, coder, analytics):
 def run_interactive_session(args, io, coder, analytics, hooks_manager):
     """Run the main interactive coder loop including mode switches."""
     from aider.commands import SwitchCoder
-    from aider.coders import Coder
-
     analytics.event(
         "cli session",
         main_model=coder.main_model,
@@ -251,7 +251,54 @@ def run_interactive_session(args, io, coder, analytics, hooks_manager):
             if "show_announcements" in kwargs:
                 del kwargs["show_announcements"]
 
-            coder = Coder.create(**kwargs)
+            coder = create_coder(**kwargs)
+
+            if switch.kwargs.get("show_announcements") is not False:
+                coder.show_announcements()
+
+
+async def run_interactive_session_async(args, io, coder, analytics, hooks_manager):
+    """
+    Async version of run_interactive_session.
+    
+    Enables non-blocking prompt input during generation (Option B).
+    """
+    from aider.commands import SwitchCoder
+    analytics.event(
+        "cli session",
+        main_model=coder.main_model,
+        edit_format=coder.main_model.edit_format,
+    )
+
+    while True:
+        try:
+            coder.ok_to_warm_cache = bool(args.cache_keepalive_pings)
+            await coder.run_async()
+
+            if hooks_manager:
+                try:
+                    await hooks_manager.execute_async("on_exit", coder=coder)
+                except Exception as err:
+                    if hooks_manager.verbose:
+                        io.tool_error(f"Hook error (on_exit): {err}")
+
+            analytics.event("exit", reason="Completed main CLI coder.run_async")
+            return None
+        except SwitchCoder as switch:
+            coder.ok_to_warm_cache = False
+
+            if hooks_manager:
+                coder.hooks_manager = hooks_manager
+
+            if hasattr(switch, "placeholder") and switch.placeholder is not None:
+                io.placeholder = switch.placeholder
+
+            kwargs = dict(io=io, from_coder=coder)
+            kwargs.update(switch.kwargs)
+            if "show_announcements" in kwargs:
+                del kwargs["show_announcements"]
+
+            coder = create_coder(**kwargs)
 
             if switch.kwargs.get("show_announcements") is not False:
                 coder.show_announcements()

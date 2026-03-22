@@ -60,13 +60,14 @@ class TestInputOutput(unittest.TestCase):
             }
         )
 
-        toolbar = io._get_prompt_toolbar()
+        toolbar = io._get_bottom_toolbar()
+        toolbar_text = str(toolbar)
 
-        self.assertIn("[AUTO]", toolbar)
-        self.assertIn("(Planning)", toolbar)
-        self.assertIn("Agents: 2", toolbar)
-        self.assertIn("Hint: Use /help", toolbar)
-        self.assertIn("Enter submit", toolbar)
+        # New format: lowercase mode with phase in parentheses
+        self.assertIn("auto", toolbar_text.lower())
+        self.assertIn("planning", toolbar_text.lower())
+        self.assertIn("$1.25", toolbar_text)
+        self.assertIn("Agents: 2", toolbar_text)
 
     def test_line_endings_validation(self):
         # Test valid line endings
