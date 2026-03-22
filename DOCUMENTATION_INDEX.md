@@ -75,6 +75,20 @@ The [AGENTS.md](AGENTS.md#security--code-quality-audit-2026-03-17) file contains
 
 ---
 
+## ✨ Quality of Life Improvements
+
+| Document | Purpose |
+|----------|---------|
+| [QOL_IMPROVEMENTS_REPORT.md](QOL_IMPROVEMENTS_REPORT.md) | Complete list of 67 QoL improvements |
+
+### New Commands Overview
+- **Aliases**: `/a`→add, `/d`→drop, `/c`→commit, `/q`→exit, `/u`→undo, `/gs`→git status, `/gd`→git diff
+- **File Management**: `/save`, `/load`, `/find`, `/exclude`, `/size`, `/rename`, `/pin`
+- **Git**: `/undo`, `/checkpoint`, `/recent`, `/untracked`, `/blame`
+- **Info**: `/cost`, `/stats`, `/context`, `/suggest`
+
+---
+
 ## 📖 Documentation by Task
 
 ### "I want to set up OpenClaw..."
