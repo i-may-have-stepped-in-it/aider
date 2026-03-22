@@ -76,6 +76,13 @@ class BaseCoderLifecycleMixin:
                     ex_info = litellm_ex.get_ex_info(err)
 
                     if ex_info.name == "ContextWindowExceededError":
+                        self.io.tool_error("\nContext window exceeded!")
+                        self.io.tool_output("The conversation is too long for the model's context window.")
+                        self.io.tool_output("\nOptions to fix this:")
+                        self.io.tool_output("  1. /drop some files to reduce context")
+                        self.io.tool_output("  2. /clear to clear chat history")  
+                        self.io.tool_output("  3. /model <larger-model> to switch to a model with bigger context")
+                        self.io.tool_output("  4. /save + /reset to archive and start fresh")
                         exhausted = True
                         break
 

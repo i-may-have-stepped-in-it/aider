@@ -77,8 +77,13 @@ class BaseCoderLLMOutputMixin:
 
     def show_send_output_stream(self, completion):
         received_content = False
+        self.interrupted = False
 
         for chunk in completion:
+            if self.interrupted:
+                self.io.tool_warning("\n[bold red]Generation interrupted by user.[/bold red]")
+                break
+
             if len(chunk.choices) == 0:
                 continue
 
@@ -130,6 +135,13 @@ class BaseCoderLLMOutputMixin:
 
             if received_content:
                 self._stop_waiting_spinner()
+
+            # If we have a live delegate (background prompt), forward the new text chunk
+            if self.live_delegate and text:
+                # Pass thinking status if we are in a reasoning block
+                is_thinking = self.got_reasoning_content and not self.ended_reasoning_content
+                self.live_delegate.append_content(text, is_thinking=is_thinking)
+
             self.partial_response_content += text
 
             if self.show_pretty():

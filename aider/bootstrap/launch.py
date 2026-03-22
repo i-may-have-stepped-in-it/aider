@@ -11,7 +11,7 @@ import traceback
 from dataclasses import fields
 from pathlib import Path
 
-import importlib_resources
+import importlib_resources  # noqa: F401
 
 try:
     import git
@@ -83,6 +83,7 @@ def make_new_repo(git_root, io):
 
 
 def setup_git(git_root, io):
+    from aider.repo import ANY_GIT_ERROR
     if git is None:
         return
 
@@ -468,6 +469,7 @@ def prepare_repo_and_runtime(args, io, analytics, hooks_manager, main_model, fna
         analytics=analytics,
         hooks_manager=hooks_manager,
         resolve_defaults=False,
+        max_budget=getattr(args, 'budget', None) or 5.0,
     )
     return False, None, repo, runtime
 
@@ -600,8 +602,6 @@ def load_dotenv_files(git_root, dotenv_fname, encoding="utf-8"):
 
 
 def register_litellm_models(git_root, model_metadata_fname, io, verbose=False):
-    import importlib_resources
-
     from aider import models
 
     model_metadata_files = []
@@ -778,7 +778,10 @@ def build_default_config_files(git_root):
 def parse_args(argv, git_root):
     from aider.args import get_parser
 
-    blank_aider_env = {key: value for key, value in os.environ.items() if key.startswith("AIDER_") and not value}
+    blank_aider_env = {
+        key: value for key, value in os.environ.items()
+        if key.startswith("AIDER_") and not value
+    }
 
     for key in blank_aider_env:
         os.environ.pop(key, None)
@@ -788,7 +791,8 @@ def parse_args(argv, git_root):
         try:
             args, unknown = parser.parse_known_args(argv)
         except AttributeError as e:
-            if all(word in str(e) for word in ["bool", "object", "has", "no", "attribute", "strip"]):
+            words = ["bool", "object", "has", "no", "attribute", "strip"]
+            if all(word in str(e) for word in words):
                 if check_config_files_for_yes(build_default_config_files(git_root)):
                     return parser, None, None, 1
             raise e

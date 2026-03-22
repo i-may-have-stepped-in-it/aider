@@ -555,6 +555,52 @@ class TestModels(unittest.TestCase):
             timeout=600,
         )
 
+    def test_use_openclaw_model_with_tier_aliases(self):
+        """Test that tier aliases (@speed, @intel, @uncen) use OpenClaw."""
+        from aider.models import Model
+
+        # Test @speed tier
+        model = Model("@speed")
+        self.assertTrue(
+            model._use_openclaw_model(),
+            "@speed should route through OpenClaw"
+        )
+
+        # Test @intel tier
+        model = Model("@intel")
+        self.assertTrue(
+            model._use_openclaw_model(),
+            "@intel should route through OpenClaw"
+        )
+
+        # Test @uncen tier
+        model = Model("@uncen")
+        self.assertTrue(
+            model._use_openclaw_model(),
+            "@uncen should route through OpenClaw"
+        )
+
+    def test_use_openclaw_model_with_explicit_names(self):
+        """Test explicit openclaw names still work."""
+        from aider.models import Model
+
+        model = Model("openclaw")
+        self.assertTrue(model._use_openclaw_model())
+
+        model = Model("openclaw:chat")
+        self.assertTrue(model._use_openclaw_model())
+
+        model = Model("openclaw:main")
+        self.assertTrue(model._use_openclaw_model())
+
+    def test_use_openclaw_model_disabled_mode(self):
+        """Test that disabled mode returns False even for tier aliases."""
+        from aider.models import Model
+
+        with patch.dict("os.environ", {"AIDER_OPENCLAW_MODE": "disabled"}):
+            model = Model("@speed")
+            self.assertFalse(model._use_openclaw_model())
+
 
 if __name__ == "__main__":
     unittest.main()

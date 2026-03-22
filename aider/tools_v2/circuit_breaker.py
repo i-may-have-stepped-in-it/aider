@@ -811,7 +811,7 @@ def with_resilience(
     Example:
         @with_resilience(circuit_name="api", rate=5.0)
         def call_api(url):
-            return requests.get(url)
+            return requests.get(url, timeout=10)
     """
     breaker = CircuitBreaker(name=circuit_name, failure_threshold=failure_threshold)
     limiter = TokenBucket(rate=rate, capacity=rate * 2)

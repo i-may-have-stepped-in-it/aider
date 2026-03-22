@@ -44,6 +44,7 @@ from .base_coder_reply import BaseCoderReplyMixin
 from .base_coder_runtime import BaseCoderRuntimeMixin
 from .base_coder_shell import BaseCoderShellMixin
 from .chat_history import ChatHistory
+from .coder_factory import create_coder
 
 logger = logging.getLogger(__name__)
 
@@ -199,15 +200,9 @@ class Coder(
         """
         Factory method for creating Coder instances.
 
-        NOTE: This method is DEPRECATED and should not be used for new code.
-        Use get_coder_factory().create() instead for better separation of concerns.
-
-        This method is maintained only for backward compatibility with existing code.
+        This is a thin wrapper around CoderFactory for backward compatibility.
+        New code should use get_coder_factory().create() or create_coder() directly.
         """
-        logger.warning(
-            "Coder.create() is deprecated. Use get_coder_factory().create() instead.",
-            stacklevel=2
-        )
         from .coder_factory import UnknownEditFormat as FactoryUnknownEditFormat, get_coder_factory
 
         factory = get_coder_factory()
@@ -224,7 +219,7 @@ class Coder(
             raise UnknownEditFormat(err.edit_format, err.valid_formats) from err
 
     def clone(self, **kwargs):
-        new_coder = Coder.create(from_coder=self, **kwargs)
+        new_coder = create_coder(from_coder=self, **kwargs)
         return new_coder
 
     def get_announcements(self):
@@ -319,6 +314,11 @@ class Coder(
 
         if self.io.multiline_mode:
             lines.append("Multiline mode: Enabled. Enter inserts newline, Alt-Enter submits text")
+        
+        # Show helpful hint for new users (only when no files added yet)
+        if not self.abs_fnames and not self.done_messages:
+            lines.append("")
+            lines.append("Tip: Use /add <file> to add files, /help <command> for details, or just type to chat")
 
         return lines
 
@@ -372,6 +372,9 @@ class Coder(
         runtime=None,
         review_mode=False,
         auto_review=False,
+        total_cache_hit_tokens=0,
+        total_cache_write_tokens=0,
+        total_uncached_input_tokens=0,
     ):
         if io is None:
             io = InputOutput()
@@ -454,6 +457,11 @@ class Coder(
         self.message_tokens_sent = 0
         self.message_tokens_received = 0
 
+        # Token caching statistics (accumulated across all messages)
+        self.total_cache_hit_tokens = total_cache_hit_tokens
+        self.total_cache_write_tokens = total_cache_write_tokens
+        self.total_uncached_input_tokens = total_uncached_input_tokens
+
         self.verbose = verbose
         self.abs_fnames = set()
         self.abs_read_only_fnames = set()
@@ -462,6 +470,7 @@ class Coder(
         self.dry_run = dry_run
         self.io = io
         self.pretty = self.io.pretty
+        self.live_delegate = None
 
         if not auto_commits:
             dirty_commits = False

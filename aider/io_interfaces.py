@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+from typing import Any
+
 
 class TerminalUIObserver(ABC):
     """
     Interface for terminal UI components that observe system events.
-    
-    This follows the Observer pattern to decouple core logic from 
+
+    This follows the Observer pattern to decouple core logic from
     terminal rendering, ensuring an enterprise-grade architecture.
     """
 

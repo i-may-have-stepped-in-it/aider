@@ -17,8 +17,7 @@ import hashlib
 import json
 import logging
 import os
-import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 # Try to import requests, provide helpful error if missing
@@ -383,7 +382,15 @@ class OpenClawModel:
                 _, response = self.send_completion(messages, stream=False)
 
                 # Extract content from response
-                if isinstance(response, dict):
+                if hasattr(response, "choices") and response.choices:
+                    choice = response.choices[0]
+                    if hasattr(choice, "message"):
+                        return getattr(choice.message, "content", "")
+                    elif hasattr(choice, "text"):
+                        return choice.text
+                elif hasattr(response, "output"):
+                    return response.output
+                elif isinstance(response, dict):
                     if "choices" in response and response["choices"]:
                         choice = response["choices"][0]
                         if "message" in choice:
@@ -421,7 +428,7 @@ def is_openclaw_endpoint(url=None):
     indicators = [
         "127.0.0.1:18789",
         "localhost:18789",
-        ":18789",  # OpenClaw default port
+        "0.0.0.0:18789",
         "openclaw",
         ".openclaw.ai",
     ]

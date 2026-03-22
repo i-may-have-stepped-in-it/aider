@@ -75,6 +75,7 @@ def create_openclaw_skill_class(skill_name: str, metadata, bridge: OpenClawBridg
                 success=result.success,
                 output="\n".join(part for part in output_parts if part),
                 error=result.error_message if not result.success else None,
+                execution_time=result.duration_ms / 1000.0,
                 data={
                     "exit_code": result.exit_code,
                     "duration_ms": result.duration_ms,
