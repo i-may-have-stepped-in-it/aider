@@ -106,6 +106,57 @@ Speak with aider about your code! Request new features, test cases or bug fixes 
 ### [Linting & testing](https://aider.chat/docs/usage/lint-test.html)
 Automatically lint and test your code every time aider makes changes. Aider can fix problems detected by your linters and test suites.
 
+---
+
+## 🎯 Quality of Life Improvements (v2.1.0)
+
+This fork includes **67 QoL improvements** for a smoother developer experience:
+
+### Quick Aliases
+```bash
+/a <file>        # Same as /add
+/d <file>        # Same as /drop  
+/c               # Same as /commit
+/q or /x         # Same as /exit
+/u               # Same as /undo
+/gs              # Git status shorthand
+/gd              # Git diff shorthand
+/ctx             # Show context (files in chat)
+```
+
+### File Management
+```bash
+/save [file]     # Save session to JSON
+/load <file>     # Restore session from JSON
+/find <pattern>  # Search within chat files
+/exclude <pat>   # Add pattern to .aiderignore
+/rename <o> <n>  # Rename file with git mv
+/pin <file>      # Pin file to top of context
+/tail <f> [n]    # Show last n lines of file
+/head <f> [n]    # Show first n lines of file
+```
+
+### Git Workflow
+```bash
+/undo            # Undo last commit with confirmation
+/checkpoint      # Create git stash point
+/recent [n]      # Show recently modified files
+/untracked       # Show untracked files
+/blame <file>    # Git blame with binary detection
+/install-hook    # Install pre-commit hook for AI! comments
+```
+
+### Information & Insights
+```bash
+/cost            # Show session spending & budget
+/stats           # Session statistics
+/context         # Show current files (with pins marked)
+/suggest         # Get command suggestions based on context
+/map             # Show repo-map status
+```
+
+See [QOL_IMPROVEMENTS_REPORT.md](QOL_IMPROVEMENTS_REPORT.md) for the complete list of 67 improvements.
+
 ## 🚀 Getting Started
 
 ### Quick Install

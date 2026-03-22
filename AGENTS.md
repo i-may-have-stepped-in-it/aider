@@ -11,6 +11,7 @@
 > - Modularized commands (6 focused modules)
 > - Auto-discovering skill system (100+ skills)
 > - New infrastructure: audit, security, memory, LSP
+> - **67 QoL improvements**: 50+ new commands, aliases, security enhancements
 
 ## Project Overview
 
