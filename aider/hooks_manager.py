@@ -265,26 +265,45 @@ class HooksManager:
 
         # 1. Phase Updates
         if hasattr(observer, "on_phase_change"):
+            # Wrap to unpack context dict into positional args
+            def _on_phase_change_wrapper(context):
+                phase = context.get("phase", "Unknown")
+                status = context.get("status", "running")
+                return observer.on_phase_change(phase, status)
+
             self.register_hook(
                 name=f"ui:phase:{id(observer)}",
                 hook_point=HookPoint.UI_PHASE_UPDATE,
-                callback=observer.on_phase_change,
+                callback=_on_phase_change_wrapper,
             )
 
         # 2. Cost Updates
         if hasattr(observer, "on_cost_update"):
+            # Wrap to unpack context dict into positional args
+            def _on_cost_update_wrapper(context):
+                total = context.get("total", 0.0)
+                percentage = context.get("percentage", 0.0)
+                return observer.on_cost_update(total, percentage)
+
             self.register_hook(
                 name=f"ui:cost:{id(observer)}",
                 hook_point=HookPoint.UI_COST_UPDATE,
-                callback=observer.on_cost_update,
+                callback=_on_cost_update_wrapper,
             )
 
         # 3. Agent Updates
         if hasattr(observer, "on_agent_status"):
+            # Wrap to unpack context dict into positional args
+            def _on_agent_status_wrapper(context):
+                agent_id = context.get("agent_id", "")
+                status = context.get("status", "")
+                task = context.get("task")
+                return observer.on_agent_status(agent_id, status, task)
+
             self.register_hook(
                 name=f"ui:agent:{id(observer)}",
                 hook_point=HookPoint.UI_AGENT_HEARTBEAT,
-                callback=observer.on_agent_status,
+                callback=_on_agent_status_wrapper,
             )
 
         # 4. Tool Progress
@@ -452,6 +471,109 @@ class HooksManager:
                 )
 
         return results
+
+    async def execute_async(self, hook_name: str, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Async version of execute for use in async contexts.
+        
+        This avoids nested asyncio.run() calls which would fail.
+        """
+        results = {
+            "hook_name": hook_name,
+            "executed": False,
+            "callbacks": [],
+            "errors": [],
+            "data": {},
+        }
+
+        try:
+            hook_point = self._hook_point_from_name(hook_name)
+        except KeyError:
+            if self.verbose and self.io:
+                self.io.tool_error(f"[hooks] Unknown hook: {hook_name}")
+            return results
+
+        context = kwargs.copy()
+        if args:
+            context["args"] = args
+
+        # Execute hooks with async support
+        hook_results = await self._execute_hooks_async(hook_point, context)
+        if not hook_results:
+            return results
+
+        results["executed"] = True
+        for result in hook_results:
+            results["callbacks"].append(result)
+            if result.get("success"):
+                callback_result = result.get("result")
+                if isinstance(callback_result, dict):
+                    results["data"].update(callback_result)
+            else:
+                results["errors"].append({
+                    "error": result.get("error"),
+                    "hook_name": result.get("hook_name"),
+                })
+
+        return results
+
+    async def _execute_hooks_async(self, hook_point: Any, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Execute all hooks at a given hook point with async support."""
+        hooks = self._hooks.get(hook_point, [])
+        if not hooks:
+            return []
+
+        results = []
+        stop_on_error = False
+
+        # Sort by priority (higher first)
+        hooks = sorted(hooks, key=lambda h: h.config.priority, reverse=True)
+
+        for hook in hooks:
+            result = await self._execute_hook_async(hook, context)
+            results.append(result)
+
+            if not result.get("success"):
+                if stop_on_error or hook.config.stop_on_failure:
+                    break
+
+        return results
+
+    async def _execute_hook_async(self, hook: Any, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a single hook with async support."""
+        import asyncio
+        import time
+        
+        start_time = time.time()
+        last_error = None
+
+        for attempt in range(hook.config.retry_count + 1):
+            try:
+                if hook.config.async_execution or asyncio.iscoroutinefunction(hook.callback):
+                    # Already async or configured as async
+                    result = await hook.callback(context)
+                else:
+                    # Run sync callback in thread
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(None, hook.callback, context)
+                
+                return {
+                    "hook_name": hook.name,
+                    "success": True,
+                    "result": result,
+                    "duration_ms": (time.time() - start_time) * 1000,
+                }
+            except Exception as e:
+                last_error = e
+                if attempt < hook.config.retry_count:
+                    await asyncio.sleep(hook.config.retry_delay)
+
+        return {
+            "hook_name": hook.name,
+            "success": False,
+            "error": str(last_error),
+            "duration_ms": (time.time() - start_time) * 1000,
+        }
 
     def load_hooks_from_file(self, file_path: str) -> bool:
         """Compatibility wrapper for legacy hook loading."""

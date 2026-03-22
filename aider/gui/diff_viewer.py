@@ -6,14 +6,8 @@ code changes before they are applied to the filesystem.
 """
 
 import difflib
-from typing import Optional, List, Tuple
 from rich.console import Console
-from rich.syntax import Syntax
 from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
-from prompt_toolkit import PromptSession
-from prompt_toolkit.shortcuts import confirm
 
 class InteractiveDiffViewer:
     """

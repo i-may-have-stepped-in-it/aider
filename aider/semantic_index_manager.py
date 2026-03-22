@@ -227,8 +227,6 @@ class SemanticIndexManager:
     
     def _index_file(self, file_path: str):
         """Index a single file."""
-        import os
-        
         abs_file_path = Path(file_path)
         if not abs_file_path.exists():
             return
@@ -274,8 +272,6 @@ class SemanticIndexManager:
     
     def _is_binary_file(self, file_path: Path) -> bool:
         """Check if a file is binary."""
-        import os
-        
         # Check file extension
         binary_extensions = {'.exe', '.dll', '.so', '.dylib', '.bin', '.dat', '.pdf', '.jpg', '.png', '.gif'}
         if file_path.suffix.lower() in binary_extensions:

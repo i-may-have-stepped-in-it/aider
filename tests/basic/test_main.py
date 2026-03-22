@@ -5,7 +5,7 @@ import tempfile
 from io import StringIO
 from pathlib import Path
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import git
 from prompt_toolkit.input import DummyInput
@@ -15,7 +15,8 @@ from aider.args import get_parser
 from aider.coders import Coder
 from aider.dump import dump  # noqa: F401
 from aider.io import InputOutput
-from aider.main import check_gitignore, load_dotenv_files, main, setup_git
+from aider.main import main
+from aider.bootstrap.launch import check_gitignore, load_dotenv_files, setup_git
 from aider.utils import GitTemporaryDirectory, IgnorantTemporaryDirectory, make_repo
 
 
@@ -90,13 +91,23 @@ class TestMain(TestCase):
         make_repo()
 
         Path(".aider.conf.yml").write_text("auto-commits: false\n")
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             main(["--yes"], input=DummyInput(), output=DummyOutput())
             _, kwargs = MockCoder.call_args
             assert kwargs["auto_commits"] is False
 
         Path(".aider.conf.yml").write_text("auto-commits: true\n")
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             main([], input=DummyInput(), output=DummyOutput())
             _, kwargs = MockCoder.call_args
             assert kwargs["auto_commits"] is True
@@ -262,33 +273,63 @@ class TestMain(TestCase):
             self.assertNotIn(abs_ignored_file, coder.abs_fnames)
 
     def test_main_args(self):
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             # --yes will just ok the git repo without blocking on input
             # following calls to main will see the new repo already
             main(["--no-auto-commits", "--yes"], input=DummyInput())
-            _, kwargs = MockCoder.call_args
-            assert kwargs["auto_commits"] is False
+            args, kwargs = MockCoder.call_args
+            actual_args = args[0] if args else kwargs.get("args")
+            self.assertEqual(actual_args.auto_commits, False)
 
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             main(["--auto-commits"], input=DummyInput())
-            _, kwargs = MockCoder.call_args
-            assert kwargs["auto_commits"] is True
+            args, kwargs = MockCoder.call_args
+            actual_args = args[0] if args else kwargs.get("args")
+            self.assertEqual(actual_args.auto_commits, True)
 
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             main([], input=DummyInput())
-            _, kwargs = MockCoder.call_args
-            assert kwargs["dirty_commits"] is True
-            assert kwargs["auto_commits"] is True
+            args, kwargs = MockCoder.call_args
+            actual_args = args[0] if args else kwargs.get("args")
+            self.assertEqual(actual_args.dirty_commits, True)
+            self.assertEqual(actual_args.auto_commits, True)
 
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             main(["--no-dirty-commits"], input=DummyInput())
-            _, kwargs = MockCoder.call_args
-            assert kwargs["dirty_commits"] is False
+            args, kwargs = MockCoder.call_args
+            actual_args = args[0] if args else kwargs.get("args")
+            self.assertEqual(actual_args.dirty_commits, False)
 
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             main(["--dirty-commits"], input=DummyInput())
-            _, kwargs = MockCoder.call_args
-            assert kwargs["dirty_commits"] is True
+            args, kwargs = MockCoder.call_args
+            actual_args = args[0] if args else kwargs.get("args")
+            self.assertEqual(actual_args.dirty_commits, True)
 
     def test_env_file_override(self):
         with GitTemporaryDirectory() as git_dir:
@@ -328,7 +369,12 @@ class TestMain(TestCase):
         with open(message_file_path, "w", encoding="utf-8") as message_file:
             message_file.write(message_file_content)
 
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             MockCoder.return_value.run = MagicMock()
             main(
                 ["--yes", "--message-file", message_file_path],
@@ -343,11 +389,23 @@ class TestMain(TestCase):
         fname = "foo.py"
 
         with GitTemporaryDirectory():
-            with patch("aider.coders.Coder.create") as MockCoder:  # noqa: F841
-                with patch("aider.main.InputOutput") as MockSend:
+            with patch("aider.bootstrap.session.create_coder") as MockCoder:  # noqa: F841
+                mock_coder = AsyncMock()
+                # Return True to handled or exit the loop
+                mock_coder.run_async.return_value = None
+                # Mock attributes accessed by SwitchCoder or analytics
+                mock_coder.main_model.name = "gpt-4"
+                mock_coder.main_model.edit_format = "diff"
+                
+                # Make the loop exit after one iteration
+                mock_coder.run_async.side_effect = [None, SystemExit()]
+                
+                MockCoder.return_value = mock_coder
+                with patch("aider.io.InputOutput") as MockSend:
 
                     def side_effect(*args, **kwargs):
-                        self.assertEqual(kwargs["encoding"], "iso-8859-15")
+                        # encoding is passed as a keyword argument to InputOutput
+                        self.assertEqual(kwargs.get("encoding"), "iso-8859-15")
                         return MagicMock()
 
                     MockSend.side_effect = side_effect
@@ -357,26 +415,31 @@ class TestMain(TestCase):
     def test_main_exit_calls_version_check(self):
         with GitTemporaryDirectory():
             with (
-                patch("aider.main.check_version") as mock_check_version,
-                patch("aider.main.InputOutput") as mock_input_output,
+                patch("aider.versioncheck.check_version") as mock_check_version,
+                patch("aider.io.InputOutput") as mock_input_output,
             ):
                 main(["--exit", "--check-update"], input=DummyInput(), output=DummyOutput())
                 mock_check_version.assert_called_once()
                 mock_input_output.assert_called_once()
 
-    @patch("aider.main.create_coder")
-    @patch("aider.main.InputOutput")
+    @patch("aider.bootstrap.session.create_coder")
+    @patch("aider.io.InputOutput")
     def test_main_message_adds_to_input_history(self, MockInputOutput, mock_create_coder):
         test_message = "test message"
         mock_io_instance = MockInputOutput.return_value
-        mock_create_coder.return_value = MagicMock()
+        
+        mock_coder = AsyncMock()
+        mock_coder.run_async.side_effect = [None, SystemExit()]
+        mock_coder.main_model.name = "gpt-4"
+        mock_coder.main_model.edit_format = "diff"
+        mock_create_coder.return_value = mock_coder
 
         main(["--message", test_message], input=DummyInput(), output=DummyOutput())
 
         mock_io_instance.add_to_input_history.assert_called_once_with(test_message)
 
-    @patch("aider.main.dispatch_session_mode", return_value=(True, None))
-    @patch("aider.main.InputOutput")
+    @patch("aider.bootstrap.runtime.dispatch_session_mode", return_value=(True, None))
+    @patch("aider.io.InputOutput")
     def test_yes(self, MockInputOutput, mock_dispatch):
         test_message = "test message"
 
@@ -384,8 +447,8 @@ class TestMain(TestCase):
         args, kwargs = MockInputOutput.call_args
         self.assertTrue(args[1])
 
-    @patch("aider.main.dispatch_session_mode", return_value=(True, None))
-    @patch("aider.main.InputOutput")
+    @patch("aider.bootstrap.runtime.dispatch_session_mode", return_value=(True, None))
+    @patch("aider.io.InputOutput")
     def test_default_yes(self, MockInputOutput, mock_dispatch):
         test_message = "test message"
 
@@ -395,7 +458,7 @@ class TestMain(TestCase):
 
     def test_dark_mode_sets_code_theme(self):
         # Mock InputOutput to capture the configuration
-        with patch("aider.main.InputOutput") as MockInputOutput:
+        with patch("aider.io.InputOutput") as MockInputOutput:
             MockInputOutput.return_value.get_input.return_value = None
             main(["--dark-mode", "--no-git", "--exit"], input=DummyInput(), output=DummyOutput())
             # Ensure InputOutput was called
@@ -406,7 +469,7 @@ class TestMain(TestCase):
 
     def test_light_mode_sets_code_theme(self):
         # Mock InputOutput to capture the configuration
-        with patch("aider.main.InputOutput") as MockInputOutput:
+        with patch("aider.io.InputOutput") as MockInputOutput:
             MockInputOutput.return_value.get_input.return_value = None
             main(["--light-mode", "--no-git", "--exit"], input=DummyInput(), output=DummyOutput())
             # Ensure InputOutput was called
@@ -416,7 +479,7 @@ class TestMain(TestCase):
             self.assertEqual(kwargs["code_theme"], "default")
 
     def test_dashboard_flag_threads_to_io(self):
-        with patch("aider.main.InputOutput") as MockInputOutput:
+        with patch("aider.io.InputOutput") as MockInputOutput:
             MockInputOutput.return_value.get_input.return_value = None
             main(["--dashboard", "--no-git", "--exit"], input=DummyInput(), output=DummyOutput())
             _, kwargs = MockInputOutput.call_args
@@ -436,7 +499,7 @@ class TestMain(TestCase):
 
     def test_env_file_flag_sets_automatic_variable(self):
         env_file_path = self.create_env_file(".env.test", "AIDER_DARK_MODE=True")
-        with patch("aider.main.InputOutput") as MockInputOutput:
+        with patch("aider.io.InputOutput") as MockInputOutput:
             MockInputOutput.return_value.get_input.return_value = None
             MockInputOutput.return_value.get_input.confirm_ask = True
             main(
@@ -451,7 +514,7 @@ class TestMain(TestCase):
 
     def test_default_env_file_sets_automatic_variable(self):
         self.create_env_file(".env", "AIDER_DARK_MODE=True")
-        with patch("aider.main.InputOutput") as MockInputOutput:
+        with patch("aider.io.InputOutput") as MockInputOutput:
             MockInputOutput.return_value.get_input.return_value = None
             MockInputOutput.return_value.get_input.confirm_ask = True
             main(["--no-git", "--exit"], input=DummyInput(), output=DummyOutput())
@@ -463,19 +526,31 @@ class TestMain(TestCase):
 
     def test_false_vals_in_env_file(self):
         self.create_env_file(".env", "AIDER_SHOW_DIFFS=off")
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             main(["--no-git", "--yes"], input=DummyInput(), output=DummyOutput())
             MockCoder.assert_called_once()
-            _, kwargs = MockCoder.call_args
-            self.assertEqual(kwargs["show_diffs"], False)
+            args, kwargs = MockCoder.call_args
+            actual_args = args[0] if args else kwargs.get("args")
+            self.assertEqual(actual_args.show_diffs, False)
 
     def test_true_vals_in_env_file(self):
         self.create_env_file(".env", "AIDER_SHOW_DIFFS=on")
-        with patch("aider.coders.Coder.create") as MockCoder:
+        with patch("aider.bootstrap.session.create_coder") as MockCoder:
+            mock_coder = AsyncMock()
+            mock_coder.run_async.side_effect = [None, SystemExit()]
+            mock_coder.main_model.name = "gpt-4"
+            mock_coder.main_model.edit_format = "diff"
+            MockCoder.return_value = mock_coder
             main(["--no-git", "--yes"], input=DummyInput(), output=DummyOutput())
             MockCoder.assert_called_once()
-            _, kwargs = MockCoder.call_args
-            self.assertEqual(kwargs["show_diffs"], True)
+            args, kwargs = MockCoder.call_args
+            actual_args = args[0] if args else kwargs.get("args")
+            self.assertEqual(actual_args.show_diffs, True)
 
     def test_lint_option(self):
         with GitTemporaryDirectory() as git_dir:
@@ -568,39 +643,50 @@ class TestMain(TestCase):
                 ),
                 patch("pathlib.Path.home", return_value=fake_home),
                 patch("aider.onboarding.is_openclaw_configured", return_value=False),
-                patch("aider.coders.Coder.create") as MockCoder,
+                patch("aider.bootstrap.session.create_coder") as MockCoder,
             ):
+                mock_coder = AsyncMock()
+                mock_coder.run_async.side_effect = [None, SystemExit()]
+                mock_coder.main_model.name = "gpt-4"
+                mock_coder.main_model.edit_format = "diff"
+                MockCoder.return_value = mock_coder
                 # Test loading from specified config file
                 main(
                     ["--yes", "--exit", "--config", str(named_config)],
                     input=DummyInput(),
                     output=DummyOutput(),
                 )
-                _, kwargs = MockCoder.call_args
-                self.assertEqual(kwargs["main_model"].name, "gpt-4-1106-preview")
-                self.assertEqual(kwargs["map_tokens"], 8192)
+                args, kwargs = MockCoder.call_args
+                actual_main_model = args[3] if len(args) > 3 else kwargs.get("main_model")
+                actual_args = args[0] if args else kwargs.get("args")
+                self.assertEqual(actual_main_model.name, "gpt-4-1106-preview")
+                self.assertEqual(actual_args.map_tokens, 8192)
 
                 # Test loading from current working directory
                 main(["--yes", "--exit"], input=DummyInput(), output=DummyOutput())
-                _, kwargs = MockCoder.call_args
-                print("kwargs:", kwargs)  # Add this line for debugging
-                self.assertIn("main_model", kwargs, "main_model key not found in kwargs")
-                self.assertEqual(kwargs["main_model"].name, "gpt-4-32k")
-                self.assertEqual(kwargs["map_tokens"], 4096)
+                args, kwargs = MockCoder.call_args
+                model = args[3] if len(args) > 3 else kwargs["main_model"]
+                map_tokens = args[0].map_tokens if len(args) > 0 else kwargs["args"].map_tokens
+                self.assertEqual(model.name, "gpt-4-32k")
+                self.assertEqual(map_tokens, 4096)
 
                 # Test loading from git root
                 cwd_config.unlink()
                 main(["--yes", "--exit"], input=DummyInput(), output=DummyOutput())
-                _, kwargs = MockCoder.call_args
-                self.assertEqual(kwargs["main_model"].name, "gpt-4")
-                self.assertEqual(kwargs["map_tokens"], 2048)
+                args, kwargs = MockCoder.call_args
+                model = args[3] if len(args) > 3 else kwargs["main_model"]
+                map_tokens = args[0].map_tokens if len(args) > 0 else kwargs["args"].map_tokens
+                self.assertEqual(model.name, "gpt-4")
+                self.assertEqual(map_tokens, 2048)
 
                 # Test loading from home directory
                 git_config.unlink()
                 main(["--yes", "--exit"], input=DummyInput(), output=DummyOutput())
-                _, kwargs = MockCoder.call_args
-                self.assertEqual(kwargs["main_model"].name, "gpt-3.5-turbo")
-                self.assertEqual(kwargs["map_tokens"], 1024)
+                args, kwargs = MockCoder.call_args
+                model = args[3] if len(args) > 3 else kwargs["main_model"]
+                map_tokens = args[0].map_tokens if len(args) > 0 else kwargs["args"].map_tokens
+                self.assertEqual(model.name, "gpt-3.5-turbo")
+                self.assertEqual(map_tokens, 1024)
 
     def test_map_tokens_option(self):
         with GitTemporaryDirectory():
@@ -755,7 +841,7 @@ class TestMain(TestCase):
             )
             self.assertIsInstance(result, Coder)
 
-            with patch("aider.main.webbrowser", create=True):
+            with patch("aider.bootstrap.launch.webbrowser", create=True):
                 result = main(
                     ["--exit", "--yes"],
                     input=DummyInput(),
@@ -780,7 +866,7 @@ class TestMain(TestCase):
 
     def test_return_coder_does_not_start_background_semantic_index(self):
         with GitTemporaryDirectory():
-            with patch("aider.main.check_and_load_imports") as mock_imports, patch(
+            with patch("aider.bootstrap.launch.check_and_load_imports") as mock_imports, patch(
                 "threading.Thread"
             ) as mock_thread:
                 coder = main(
@@ -792,7 +878,13 @@ class TestMain(TestCase):
 
             self.assertIsInstance(coder, Coder)
             mock_imports.assert_not_called()
-            mock_thread.assert_not_called()
+            
+            # Filter out patch-stdout-flush-thread calls which are legitimate part of IO
+            other_threads = [
+                c for c in mock_thread.call_args_list 
+                if "patch-stdout-flush-thread" not in str(c)
+            ]
+            self.assertEqual(len(other_threads), 0, f"Unexpected threads started: {other_threads}")
 
     def test_return_coder_clone_preserves_runtime(self):
         with GitTemporaryDirectory():
@@ -1438,28 +1530,18 @@ class TestMain(TestCase):
                 mock_set_thinking.assert_not_called()
 
     def test_list_models_with_direct_resource_patch(self):
-        # Test that models from resources/model-metadata.json are included in list-models output
+        # Test that models from model_info_manager are included in list-models output
         with GitTemporaryDirectory():
-            # Create a temporary file with test model metadata
-            test_file = Path(self.tempdir) / "test-model-metadata.json"
-            test_resource_models = {
+            test_model_metadata = {
                 "special-model": {
                     "max_input_tokens": 8192,
                     "litellm_provider": "resource-provider",
                     "mode": "chat",
                 }
             }
-            test_file.write_text(json.dumps(test_resource_models))
-
-            # Create a mock for the resource file path
-            mock_resource_path = MagicMock()
-            mock_resource_path.__str__.return_value = str(test_file)
-
-            # Create a mock for the files function that returns an object with joinpath
-            mock_files = MagicMock()
-            mock_files.joinpath.return_value = mock_resource_path
-
-            with patch("aider.main.importlib_resources.files", return_value=mock_files):
+            
+            from aider.models import model_info_manager
+            with patch.dict(model_info_manager.local_model_metadata, test_model_metadata):
                 # Capture stdout to check the output
                 with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
                     main(
@@ -1468,9 +1550,34 @@ class TestMain(TestCase):
                         output=DummyOutput(),
                     )
                     output = mock_stdout.getvalue()
-
+    
                     # Check that the resource model appears in the output
                     self.assertIn("resource-provider/special-model", output)
+
+    def test_check_model_accepts_settings_flag(self):
+        with GitTemporaryDirectory():
+            # Test with a model that doesn't support reasoning_effort
+            # When flag is on, setting should be ignored
+            with patch("aider.models.Model.set_reasoning_effort") as mock_set_reasoning:
+                with patch("aider.models.Model.set_thinking_tokens") as mock_set_thinking:
+                    main(
+                        [
+                            "--model",
+                            "gpt-3.5-turbo",
+                            "--reasoning-effort",
+                            "3",
+                            "--thinking-tokens",
+                            "1000",
+                            "--check-model-accepts-settings",
+                            "--yes",
+                            "--exit",
+                        ],
+                        input=DummyInput(),
+                        output=DummyOutput(),
+                    )
+                    # Methods should not be called because model doesn't support them and flag is on
+                    mock_set_reasoning.assert_not_called()
+                    mock_set_thinking.assert_not_called()
 
             # When flag is off, setting should be applied regardless of support
             with patch("aider.models.Model.set_reasoning_effort") as mock_set_reasoning:
@@ -1527,7 +1634,7 @@ class TestMain(TestCase):
                 mock_instance.set_reasoning_effort.assert_called_once_with("3")
                 mock_instance.set_thinking_tokens.assert_not_called()
 
-    @patch("aider.main.InputOutput")
+    @patch("aider.io.InputOutput")
     def test_stream_and_cache_warning(self, MockInputOutput):
         mock_io_instance = MockInputOutput.return_value
         with GitTemporaryDirectory():
@@ -1540,7 +1647,7 @@ class TestMain(TestCase):
             "Cost estimates may be inaccurate when using streaming and caching."
         )
 
-    @patch("aider.main.InputOutput")
+    @patch("aider.io.InputOutput")
     def test_stream_without_cache_no_warning(self, MockInputOutput):
         mock_io_instance = MockInputOutput.return_value
         with GitTemporaryDirectory():
@@ -1626,7 +1733,7 @@ class TestMain(TestCase):
             # Restore CWD
             os.chdir(original_cwd)
 
-    @patch("aider.main.InputOutput")
+    @patch("aider.io.InputOutput")
     def test_cache_without_stream_no_warning(self, MockInputOutput):
         mock_io_instance = MockInputOutput.return_value
         with GitTemporaryDirectory():

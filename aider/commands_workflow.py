@@ -1,6 +1,7 @@
 import os
 import shlex
 import subprocess
+from datetime import datetime
 
 
 class WorkflowCommandsMixin:
@@ -45,20 +46,35 @@ class WorkflowCommandsMixin:
 
         fnames = [self.coder.abs_root_path(fname) for fname in fnames]
 
+        # Track results for summary
+        results = {"clean": 0, "errors": 0, "fixed": 0, "skipped": 0}
         lint_coder = None
+        
         for fname in fnames:
+            rel_fname = self.coder.get_rel_fname(fname)
             try:
                 errors = self.coder.linter.lint(fname)
             except FileNotFoundError as err:
-                self.io.tool_error(f"Unable to lint {fname}")
+                self.io.tool_error(f"Unable to lint {rel_fname}")
                 self.io.tool_output(str(err))
+                results["skipped"] += 1
                 continue
 
             if not errors:
+                results["clean"] += 1
                 continue
 
+            results["errors"] += 1
+            self.io.tool_output(f"\nLint errors in {rel_fname}:")
+            self.io.tool_output("-" * 40)
             self.io.tool_output(errors)
-            if not self.io.confirm_ask(f"Fix lint errors in {fname}?", default="y"):
+            
+            # Estimate error count (rough heuristic)
+            error_lines = [l for l in errors.split('\n') if l.strip() and not l.startswith(' ')]
+            self.io.tool_output(f"\nFound {len(error_lines)} issue(s)")
+            
+            if not self.io.confirm_ask(f"Fix lint errors in {rel_fname}?", default="y"):
+                results["skipped"] += 1
                 continue
 
             if self.coder.repo.is_dirty() and self.coder.dirty_commits:
@@ -74,6 +90,18 @@ class WorkflowCommandsMixin:
             lint_coder.add_rel_fname(fname)
             lint_coder.run(errors)
             lint_coder.abs_fnames = set()
+            results["fixed"] += 1
+        
+        # Summary
+        self.io.tool_output("\n" + "=" * 40)
+        self.io.tool_output("Lint Summary:")
+        self.io.tool_output(f"  Clean: {results['clean']} files")
+        if results['errors'] > 0:
+            self.io.tool_output(f"  With errors: {results['errors']} files")
+        if results['fixed'] > 0:
+            self.io.tool_output(f"  Fixed: {results['fixed']} files")
+        if results['skipped'] > 0:
+            self.io.tool_output(f"  Skipped: {results['skipped']} files")
 
         if lint_coder and self.coder.repo.is_dirty() and self.coder.auto_commits:
             self.cmd_commit("")
@@ -149,6 +177,23 @@ class WorkflowCommandsMixin:
                 "The last commit has already been pushed to the origin. Undoing is not possible."
             )
             return
+
+        # Confirmation prompt
+        args_clean = args.strip().lower()
+        if args_clean not in ("--force", "-f"):
+            # Show files that will be affected
+            self.io.tool_output(f"Files to be restored ({len(changed_files_last_commit)}):")
+            for fpath in changed_files_last_commit[:5]:
+                self.io.tool_output(f"  {fpath}")
+            if len(changed_files_last_commit) > 5:
+                self.io.tool_output(f"  ... and {len(changed_files_last_commit) - 5} more")
+            
+            if not self.io.confirm_ask(
+                f"Undo commit {last_commit_hash}: {last_commit_message}?",
+                default="n",
+            ):
+                self.io.tool_output("Undo cancelled.")
+                return
 
         restored = set()
         unrestored = set()
@@ -255,18 +300,309 @@ class WorkflowCommandsMixin:
             return
         self.io.tool_output(combined_output)
 
+    def cmd_gs(self, args):
+        "Run git status (output excluded from chat)"
+        # If user provides args, use them; otherwise default to "status"
+        if args.strip():
+            return self.cmd_git(f"status {args}")
+        return self.cmd_git("status")
+
+    def cmd_gd(self, args):
+        "Run git diff (output excluded from chat)"
+        # If user provides args, use them; otherwise default to "diff"
+        if args.strip():
+            return self.cmd_git(f"diff {args}")
+        return self.cmd_git("diff")
+
+    def cmd_install_hook(self, args):
+        "Install git pre-commit hook to block commits with AI! comments"
+        if not self.coder.repo:
+            self.io.tool_error("No git repository found. Hooks can only be installed in git repos.")
+            return
+        
+        force = args.strip() == "--force"
+        success, message = self.coder.repo.install_ai_comment_hook(force=force)
+        if success:
+            self.io.tool_output(message)
+        else:
+            self.io.tool_error(message)
+
+    def cmd_uninstall_hook(self, args):
+        "Remove the git pre-commit hook that blocks AI! comments"
+        if not self.coder.repo:
+            self.io.tool_error("No git repository found.")
+            return
+        
+        success, message = self.coder.repo.remove_ai_comment_hook()
+        if success:
+            self.io.tool_output(message)
+        else:
+            self.io.tool_error(message)
+
+    def cmd_blame(self, args):
+        "Show git blame for a file (last N lines, default 10)"
+        import shlex
+        
+        if not self.coder.repo:
+            self.io.tool_error("No git repository found.")
+            return
+        
+        parts = shlex.split(args.strip())
+        n_lines = 10
+        filename = None
+        
+        # Parse arguments
+        if len(parts) >= 2 and parts[0] == "-n":
+            try:
+                n_lines = int(parts[1])
+                filename = parts[2] if len(parts) > 2 else None
+            except (ValueError, IndexError):
+                self.io.tool_error("Usage: /blame [-n N] <filename>")
+                return
+        elif parts:
+            filename = parts[0]
+        
+        if not filename:
+            self.show_command_usage("/blame", error="Usage: /blame [-n N] <filename>")
+            return
+        
+        # Find the file in chat or repo
+        abs_path = None
+        for fname in self.coder.abs_fnames:
+            if self.coder.get_rel_fname(fname) == filename or fname.endswith(filename):
+                abs_path = fname
+                break
+        
+        if not abs_path:
+            # Try as relative path
+            abs_path = self.coder.abs_root_path(filename)
+            if not Path(abs_path).exists():
+                self.io.tool_error(f"File not found: {filename}")
+                return
+        
+        # Check if binary
+        try:
+            with open(abs_path, 'rb') as f:
+                chunk = f.read(1024)
+                if b'\x00' in chunk:
+                    self.io.tool_error(f"Cannot show blame for binary file: {filename}")
+                    return
+        except Exception:
+            pass
+        
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "-C", self.coder.root, "blame", "-L", f"-{n_lines},", abs_path],
+                capture_output=True,
+                text=True,
+                encoding=self.io.encoding
+            )
+            
+            if result.returncode == 0:
+                self.io.tool_output(f"Last {n_lines} lines of {filename}:")
+                self.io.tool_output("-" * 40)
+                self.io.tool_output(result.stdout)
+            else:
+                self.io.tool_error(f"Could not get blame info: {result.stderr}")
+                
+        except Exception as e:
+            self.io.tool_error(f"Error: {e}")
+
+    def cmd_checkpoint(self, args):
+        "Create or restore git checkpoints (stashes)"
+        if not self.coder.repo:
+            self.io.tool_error("No git repository found.")
+            return
+        
+        import subprocess
+        args_clean = args.strip().lower()
+        
+        if args_clean == "list":
+            # List checkpoints
+            result = subprocess.run(
+                ["git", "-C", self.coder.root, "stash", "list"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                self.io.tool_output("Checkpoints (stashes):")
+                self.io.tool_output("-" * 40)
+                for line in result.stdout.strip().split('\n')[:10]:
+                    if 'aider-checkpoint' in line:
+                        self.io.tool_output(line)
+            else:
+                self.io.tool_output("No checkpoints found.")
+            return
+        
+        if args_clean.startswith("restore "):
+            # Restore a checkpoint
+            stash_ref = args[8:].strip()
+            if not stash_ref.startswith("stash@{"):
+                stash_ref = f"stash@{{{stash_ref}}}"
+            
+            result = subprocess.run(
+                ["git", "-C", self.coder.root, "stash", "pop", stash_ref],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                self.io.tool_output(f"Restored checkpoint: {stash_ref}")
+            else:
+                self.io.tool_error(f"Restore failed: {result.stderr}")
+            return
+        
+        # Create checkpoint
+        message = args.strip() or f"Checkpoint at {datetime.now().strftime('%H:%M:%S')}"
+        
+        try:
+            result = subprocess.run(
+                ["git", "-C", self.coder.root, "stash", "push", "-m", f"aider-checkpoint: {message}"],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                self.io.tool_output(f"Checkpoint created: {message}")
+                self.io.tool_output("Use '/checkpoint list' to see all, '/checkpoint restore <n>' to restore.")
+            else:
+                self.io.tool_error(f"Checkpoint failed: {result.stderr}")
+                
+        except Exception as e:
+            self.io.tool_error(f"Error: {e}")
+
+    def cmd_merge(self, args):
+        "Check for merge conflicts and resolution suggestions"
+        if not self.coder.repo:
+            self.io.tool_error("No git repository found.")
+            return
+        
+        try:
+            # Check for merge markers
+            import subprocess
+            result = subprocess.run(
+                ["git", "-C", self.coder.root, "diff", "--check"],
+                capture_output=True,
+                text=True
+            )
+            
+            # Search for conflict markers in files
+            marker_result = subprocess.run(
+                ["grep", "-r", "<<<<<<<", "--include=*", self.coder.root],
+                capture_output=True,
+                text=True
+            )
+            
+            if marker_result.returncode == 0 and marker_result.stdout:
+                self.io.tool_error("Merge conflicts detected!")
+                self.io.tool_output("\nFiles with conflicts:")
+                
+                conflict_files = set()
+                for line in marker_result.stdout.split('\n')[:20]:
+                    if ':' in line:
+                        fname = line.split(':')[0].replace(self.coder.root + '/', '')
+                        conflict_files.add(fname)
+                
+                for fname in conflict_files:
+                    in_chat = "✓" if fname in self.coder.get_inchat_relative_files() else " "
+                    self.io.tool_output(f"  [{in_chat}] {fname}")
+                
+                self.io.tool_output("\nResolution options:")
+                self.io.tool_output("  1. Edit files to resolve conflicts manually")
+                self.io.tool_output("  2. Use 'git checkout --ours <file>' or 'git checkout --theirs <file>'")
+                self.io.tool_output("  3. Add resolved files with /add, then /commit")
+            else:
+                self.io.tool_output("No merge conflicts detected.")
+                
+                # Check if we're in a merge state
+                merge_head = Path(self.coder.root) / ".git" / "MERGE_HEAD"
+                if merge_head.exists():
+                    self.io.tool_output("\nMerge in progress. Use /commit to complete.")
+                
+        except Exception as e:
+            self.io.tool_error(f"Error checking merge status: {e}")
+
+    def cmd_chatdiff(self, args):
+        "Show aider-specific changes (diff of files in chat)"
+        if not self.coder.repo:
+            self.io.tool_error("No git repository found.")
+            return
+        
+        try:
+            # Get list of files currently in the chat
+            chat_files = self.coder.abs_fnames | self.coder.abs_read_only_fnames
+            
+            if not chat_files:
+                self.io.tool_output("No files in chat to diff.")
+                return
+            
+            # Get diff specifically for files in chat
+            dirty_files = self.coder.repo.get_dirty_files()
+            chat_dirty = [f for f in dirty_files if f in chat_files]
+            
+            if not chat_dirty:
+                self.io.tool_output("No changes in files currently in chat.")
+                return
+            
+            self.io.tool_output(f"Changes in {len(chat_dirty)} file(s) in chat:")
+            self.io.tool_output("-" * 40)
+            
+            for fname in sorted(chat_dirty):
+                rel_path = self.coder.get_rel_fname(fname)
+                self.io.tool_output(f"\n--- {rel_path} ---")
+                diff = self.coder.repo.get_diffs([fname])
+                if diff:
+                    self.io.tool_output(diff)
+                else:
+                    self.io.tool_output("(new file or binary)")
+                    
+        except Exception as e:
+            self.io.tool_error(f"Error getting diff: {e}")
+
     def cmd_test(self, args):
         "Run a shell command and add the output to the chat on non-zero exit code"
+        # Handle --history flag
+        args_clean = args.strip().lower()
+        if args_clean == "--history":
+            history = getattr(self.coder, '_test_history', [])
+            if not history:
+                self.io.tool_output("No test runs recorded yet.")
+                return
+            
+            from datetime import datetime
+            self.io.tool_output("Recent test runs:")
+            self.io.tool_output("-" * 50)
+            for i, (cmd, passed, timestamp) in enumerate(history[-10:], 1):
+                status = "PASS" if passed else "FAIL"
+                time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
+                self.io.tool_output(f"{i}. [{status}] {time_str} {cmd[:40]}")
+            return
+        
         if not args and self.coder.test_cmd:
             args = self.coder.test_cmd
 
         if not args:
+            self.io.tool_output("Usage: /test <command> or set test_cmd in config")
             return
 
         if not callable(args):
             if type(args) is not str:
                 raise ValueError(repr(args))
-            return self.cmd_run(args, True)
+            result = self.cmd_run(args, True)
+            
+            # Track test history
+            if not hasattr(self.coder, '_test_history'):
+                self.coder._test_history = []
+            
+            import time
+            from datetime import datetime
+            passed = result is None  # cmd_run returns None on success
+            self.coder._test_history.append((args, passed, time.time()))
+            
+            # Keep only last 50
+            self.coder._test_history = self.coder._test_history[-50:]
+            
+            return result
 
         errors = args()
         if not errors:

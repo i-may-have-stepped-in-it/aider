@@ -294,7 +294,7 @@ class RepoMap:
         query_scm = query_scm.read_text()
 
         code = self.io.read_text(fname)
-        if not code:
+        if not code or not isinstance(code, str):
             return
         tree = parser.parse(bytes(code, "utf-8"))
 

@@ -32,6 +32,23 @@ def default_env_file(git_root):
     return os.path.join(git_root, ".env") if git_root else ".env"
 
 
+def validate_budget(value):
+    """Validate budget argument: must be 0 (disable) or positive and reasonable."""
+    if value is None:
+        return None
+    try:
+        budget = float(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(f"Budget must be a number, got: {value}")
+    
+    if budget < 0:
+        raise argparse.ArgumentTypeError(f"Budget must be 0 or positive, got: {budget}")
+    if budget > 10000:
+        raise argparse.ArgumentTypeError(f"Budget seems unreasonably high (> $10,000): {budget}")
+    
+    return budget
+
+
 def get_parser(default_config_files, git_root):
     parser = configargparse.ArgumentParser(
         description="aider is AI pair programming in your terminal",
@@ -790,6 +807,14 @@ def get_parser(default_config_files, git_root):
         action="store_true",
         help="Always say yes to every confirmation",
         default=None,
+    )
+    group.add_argument(
+        "--budget",
+        "--max-cost",
+        type=validate_budget,
+        metavar="USD",
+        default=None,
+        help="Set a maximum spending limit for this session in USD (default: 5.00, 0 to disable)",
     )
     group.add_argument(
         "-v",

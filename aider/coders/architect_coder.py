@@ -9,6 +9,7 @@ from ..memory.vector_store import ProjectMemory
 from ..security.policy import PolicyEngine
 from .architect_prompts import ArchitectPrompts
 from .base_coder import Coder
+from .coder_factory import create_coder
 from .librarian_prompts import LibrarianPrompts
 from .reviewer_prompts import ReviewerPrompts
 from .tool_coder_v2 import ToolEnabledCoderV2
@@ -141,7 +142,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
         PARITY+: Librarian Phase. Find all relevant files before planning.
         """
         self._trigger_ui_phase("Librarian")
-        self.io.tool_output("Librarian: Identifying relevant project context...")
+        logger.info("Librarian: Identifying relevant project context...")
 
         # Semantic retrieval from past tasks
         past_context = self.project_memory.get_relevant_past_tasks(user_request)
@@ -161,7 +162,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
             summarize_from_coder=False,
         )
 
-        librarian = Coder.create(**librarian_kwargs)
+        librarian = create_coder(**librarian_kwargs)
         librarian.gpt_prompts = LibrarianPrompts()
 
         research_msg = f"Research Task: Find all files related to this request: '{user_request}'"
@@ -228,7 +229,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
         Structural Self-Critique: Spawns a reviewer to find flaws in the plan.
         """
         self._trigger_ui_phase("Reviewer")
-        self.io.tool_output("Initiating structural self-critique...")
+        logger.debug("Initiating structural self-critique...")
 
         # Create a temporary coder with the Reviewer persona
         reviewer_kwargs = dict(
@@ -239,7 +240,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
             summarize_from_coder=False,
         )
 
-        reviewer = Coder.create(**reviewer_kwargs)
+        reviewer = create_coder(**reviewer_kwargs)
         reviewer.gpt_prompts = ReviewerPrompts()
 
         # The reviewer sees the user request and the architect's plan
@@ -275,7 +276,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
             critique = self.critique_plan(content)
 
             if "PASSED" not in critique.upper():
-                self.io.tool_warning("Architectural review found issues. Self-correcting...")
+                self.io.tool_warning("Review found issues, self-correcting...")
                 correction_prompt = (
                     "Your plan was reviewed and the following issues were found:\n\n"
                     f"{critique}\n\n"
@@ -284,13 +285,13 @@ class ArchitectCoder(ToolEnabledCoderV2):
                 # Loop back to Architect for refinement
                 return self.run(with_message=correction_prompt, preproc=False)
             else:
-                self.io.tool_output("Structural review: PASSED")
+                logger.debug("Structural review: PASSED")
                 # Reset circuit breaker on success
                 self._critique_count = 0
 
         # PHASE: Security Scan
         self._trigger_ui_phase("Security Scan")
-        self.io.tool_output("Scanning plan for security vulnerabilities...")
+        logger.debug("Scanning plan for security vulnerabilities...")
 
         policy_result = self.policy_engine.scan(content)
 
@@ -357,7 +358,7 @@ class ArchitectCoder(ToolEnabledCoderV2):
         new_kwargs["review_mode"] = self.review_mode
         new_kwargs["auto_review"] = self.auto_review
 
-        editor_coder = Coder.create(**new_kwargs)
+        editor_coder = create_coder(**new_kwargs)
         editor_coder.cur_messages = []
         editor_coder.done_messages = []
 

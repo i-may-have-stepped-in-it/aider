@@ -55,7 +55,7 @@ class CollaborationCommandsMixin:
 
         Usage: /auto "task description" [--test "test command"]
         """
-        from aider.coders.base_coder import Coder
+        from aider.coders.coder_factory import create_coder
         from aider.commands import SwitchCoder
 
         task = None
@@ -92,7 +92,7 @@ class CollaborationCommandsMixin:
         if test_cmd:
             architect_kwargs["auto_accept_architect"] = True
 
-        architect = Coder.create(**architect_kwargs)
+        architect = create_coder(**architect_kwargs)
         architect.run(with_message=task)
 
         raise SwitchCoder(

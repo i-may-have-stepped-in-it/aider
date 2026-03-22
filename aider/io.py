@@ -1,11 +1,15 @@
 import base64
 import functools
+import logging
 import os
 import shlex
 import shutil
 import signal
 import subprocess
-import tempfile
+import sys
+import threading
+
+import threading
 import time
 import webbrowser
 from collections import defaultdict
@@ -25,7 +29,6 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.vi_state import InputMode
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.lexers import PygmentsLexer
-from prompt_toolkit.output.vt100 import is_dumb_terminal
 from prompt_toolkit.shortcuts import CompleteStyle, PromptSession
 from prompt_toolkit.styles import Style
 from pygments.lexers import MarkdownLexer, guess_lexer_for_filename
@@ -38,13 +41,93 @@ from rich.style import Style as RichStyle
 from rich.text import Text
 
 from aider.mdstream import MarkdownStream
+from aider.ui import DockedPromptSession, PromptMode
+from aider.ui.live_output import LiveOutputManager, LiveRichConsole
+from aider.async_compat import AsyncLock, get_running_loop
+from aider.async_running_prompt import AsyncRunningPromptManager
 
 from .dump import dump  # noqa: F401
 from .editor import pipe_editor
 from .utils import is_audio_file, is_image_file, is_video_file
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 # Constants
 NOTIFICATION_MESSAGE = "Aider is waiting for your input"
+
+
+class AsyncAiderPromptSession:
+    """
+    Async-aware wrapper for prompt_toolkit's PromptSession.
+    
+    Provides async prompt support with proper integration for background
+    generation scenarios.
+    """
+    
+    def __init__(self, session: PromptSession = None):
+        self._session = session
+        self._running_prompt_delegate = None
+        self._input_queue = []
+        self._queue_lock = threading.Lock()
+        # Backward compatibility: track last submission state
+        self.last_submission_was_running = False
+    
+    @property
+    def session(self) -> PromptSession:
+        return self._session
+    
+    @property
+    def app(self):
+        if self._session is None:
+            return None
+        return self._session.app
+    
+    def attach_running_prompt(self, delegate):
+        """Attach a running prompt delegate for background generation."""
+        self._running_prompt_delegate = delegate
+        if self._session is not None and self._session.app:
+            self._session.app.invalidate()
+    
+    def detach_running_prompt(self, delegate=None):
+        """Detach the running prompt delegate."""
+        self._running_prompt_delegate = None
+        if self._session is not None and self._session.app:
+            self._session.app.invalidate()
+    
+    @property
+    def running_prompt_delegate(self):
+        return self._running_prompt_delegate
+    
+    def queue_input(self, text: str):
+        """Queue input for later processing."""
+        with self._queue_lock:
+            self._input_queue.append(text)
+    
+    def get_queued_input(self) -> Optional[str]:
+        """Get queued input if any."""
+        with self._queue_lock:
+            return self._input_queue.pop(0) if self._input_queue else None
+    
+    def has_queued_input(self) -> bool:
+        """Check if there's queued input."""
+        with self._queue_lock:
+            return bool(self._input_queue)
+    
+    async def prompt_async(self, message: str = "", **kwargs) -> str:
+        """
+        Async prompt using prompt_toolkit's prompt_async.
+        
+        Uses patch_stdout to allow background output during prompt.
+        """
+        from prompt_toolkit.patch_stdout import patch_stdout
+        
+        with patch_stdout(raw=True):
+            return await self._session.prompt_async(message, **kwargs)
+    
+    def prompt_sync(self, message: str = "", **kwargs) -> str:
+        """Synchronous prompt (original behavior)."""
+        return self._session.prompt(message, **kwargs)
 
 
 def ensure_hash_prefix(color):
@@ -337,6 +420,7 @@ class InputOutput:
             self.pretty = False
             fancy_input = False
 
+        self.fancy_input = fancy_input
         self.user_input_color = ensure_hash_prefix(user_input_color) if self.pretty else None
         self.tool_output_color = ensure_hash_prefix(tool_output_color) if self.pretty else None
         self.tool_error_color = ensure_hash_prefix(tool_error_color) if self.pretty else None
@@ -359,8 +443,25 @@ class InputOutput:
             "cost": 0.0,
             "percentage": 0.0,
             "agents": 0,
+            "model_name": "",
+            "git_branch": "",
+            "has_draft": False,
+            "is_task_running": False,
+            "hint": "",
+            "tokens_used": 0,
+            "tokens_max": 0,
+            "tokens_pct": 0.0,
+            "footer_mode": "composer_empty",
         }
         self.dashboard = None
+        
+        # Async and Generation state
+        self._async_running_prompt_manager = None
+        self._async_prompt_session = None
+        self._input_lock = AsyncLock()
+        self._queued_inputs = []
+        self._generation_task = None
+
         try:
             from aider.gui.hints import HintManager
 
@@ -369,6 +470,9 @@ class InputOutput:
             self.hint_manager = SimpleNamespace(
                 get_contextual_hint=lambda event_type, data=None: None
             )
+        
+        # Toast manager for notifications
+        self.toast_manager = ToastManager()
 
         if fancy_input:
             # Initialize PromptSession only if we have a capable terminal
@@ -397,14 +501,160 @@ class InputOutput:
         self.file_watcher = file_watcher
         self.root = root
 
+        # Docked prompt session (new UI)
+        self._docked_prompt = None
+        self._live_output = None
+        self._base_console = self.console  # Keep reference to original console
+        
+        # Only use docked prompt if we have fancy input and are in a real TTY
+        is_interactive = hasattr(self.input, "isatty") and self.input.isatty()
+        if not is_interactive and self.input is None:
+            # If input is None, it defaults to stdin
+            is_interactive = sys.stdin.isatty()
+
+        if fancy_input and is_interactive and os.environ.get("AIDER_DOCKED_PROMPT", "1") != "0":
+            try:
+                self._docked_prompt = DockedPromptSession(
+                    model_name="",
+                    input_history_file=self.input_history_file,
+                    editing_mode=self.editingmode,
+                    on_mode_toggle=self._on_mode_toggle,
+                )
+                # Replace prompt_session with docked session's underlying session
+                if self._docked_prompt:
+                    self.prompt_session = self._docked_prompt.session
+                    # Create live output manager for docked prompt
+                    self._live_output = LiveOutputManager(self.console)
+                    # Wrap console to route output to live area
+                    self.console = LiveRichConsole(self._live_output, self.console)
+            except Exception as err:
+                logger.debug(f"Could not initialize docked prompt: {err}")
+        
+        if self.prompt_session and not self._docked_prompt:
+            self._async_prompt_session = AsyncAiderPromptSession(self.prompt_session)
+
+        # Initialize background manager if in async context
+        if get_running_loop():
+            self._async_running_prompt_manager = AsyncRunningPromptManager(self)
+
         # Validate color settings after console is initialized
         self._validate_color_settings()
+
+    @property
+    def async_running_prompt_manager(self):
+        """Property accessor for async running prompt manager."""
+        if self._async_running_prompt_manager is None and get_running_loop():
+            self._async_running_prompt_manager = AsyncRunningPromptManager(self)
+        return self._async_running_prompt_manager
+
+    @property
+    def async_prompt_session(self):
+        """Get the async prompt session wrapper."""
+        # When using docked prompt, return a wrapper for compatibility
+        if self._docked_prompt is not None:
+            return self._docked_prompt
+        return self._async_prompt_session
+
+    def set_model(self, model_name):
+        """Update model name in status bar."""
+        self.status_data["model_name"] = model_name
+        if self._docked_prompt:
+            self._docked_prompt.update_status(model_name=model_name)
+
+    def set_git_branch(self, branch_name):
+        """Update git branch in status bar."""
+        self.status_data["git_branch"] = branch_name
+        if self._docked_prompt:
+            self._docked_prompt.update_status(git_branch=branch_name)
+
+    def set_mode(self, mode):
+        """Update mode in status bar (CHAT, AUTO, ARCHITECT, ASK)."""
+        self.status_data["mode"] = mode.upper()
+    
+    def _on_mode_toggle(self, mode: PromptMode):
+        """Handle prompt mode toggle."""
+        if mode == PromptMode.SHELL:
+            self.tool_output("Switched to shell mode ($). Type shell commands directly.")
+        else:
+            self.tool_output("Switched to agent mode (✨). Type /commands or messages.")
+
+    def clear(self):
+        """Clear the terminal screen."""
+        if self.console:
+            self.console.clear()
+    
+    def start_live_output(self):
+        """Start the live output display for docked prompt."""
+        if self._live_output and not self._live_output.is_active:
+            self._live_output.start()
+    
+    def stop_live_output(self):
+        """Stop the live output display."""
+        if self._live_output and self._live_output.is_active:
+            self._live_output.stop()
+
+    async def get_input_async(
+        self,
+        root,
+        rel_fnames,
+        addable_rel_fnames,
+        commands,
+        abs_read_only_fnames=None,
+        edit_format=None,
+    ) -> Optional[str]:
+        """Async version of get_input."""
+        if self.yes:
+            return ""
+
+        # Update autocompleter
+        if self.prompt_session and self.fancy_input:
+            self.prompt_session.completer = AutoCompleter(
+                root, rel_fnames, addable_rel_fnames, commands, self.encoding, abs_read_only_fnames
+            )
+
+        # Use docked prompt or async prompt session
+        if self._docked_prompt:
+            # Update status for docked prompt
+            self._docked_prompt.update_status(
+                model_name=self.status_data.get("model_name", ""),
+                git_branch=self.status_data.get("git_branch", ""),
+                cwd=self.root,
+            )
+            
+            # Start live output area if not already started
+            self.start_live_output()
+            
+            # Check for queued input first
+            if self._docked_prompt.has_queued_input():
+                return self._docked_prompt.get_queued_input()
+                
+            return await self._docked_prompt.prompt_async()
+        
+        if self._async_prompt_session:
+            # Check for queued input first
+            queued = self._async_prompt_session.get_queued_input()
+            if queued is not None:
+                return queued
+                
+            return await self._async_prompt_session.prompt_async()
+
+        # Fallback to sync prompt in executor if no async session
+        from aider.async_compat import run_in_thread
+        return await run_in_thread(
+            self.get_input,
+            root,
+            rel_fnames,
+            addable_rel_fnames,
+            commands,
+            abs_read_only_fnames,
+        )
 
     def _get_bottom_toolbar(self):
         """Generate the bottom toolbar content based on current status."""
         from prompt_toolkit.formatted_text import HTML
 
         mode = self.status_data.get("mode", "CHAT").upper()
+        model = self.status_data.get("model_name", "unknown")
         phase = self.status_data.get("phase", "Idle")
         cost = self.status_data.get("cost", 0.0)
         percentage = self.status_data.get("percentage", 0.0)
@@ -415,14 +665,20 @@ class InputOutput:
         mode_style = 'fg="#00ff00"' if mode == "AUTO" else 'fg="#ffffff"'
         phase_style = 'fg="#ffff00"' if phase != "Idle" else ""
         cost_style = 'fg="#ff00ff"'
+        model_style = 'fg="#00aaff"'
 
         hint_part = f" | Hint: {hint}" if hint else ""
 
+        # Shorten model name if too long
+        if len(model) > 20:
+            model = model[:17] + "..."
+
         return HTML(
             f"<style {mode_style}>[{mode}]</style> "
+            f"<style {model_style}>{model}</style> "
             f"<style {phase_style}>({phase})</style> "
-            f"<style {cost_style}>Cost: ${cost:.3f} ({percentage:.1f}%)</style> "
-            f"Agents: {agents}"
+            f"<style {cost_style}>${cost:.3f}</style> "
+            f"A:{agents}"
             f"{hint_part}"
         )
 
@@ -443,7 +699,10 @@ class InputOutput:
 
     def on_phase_change(self, phase: str, status: str = "running"):
         """Called when an autonomous workflow phase changes."""
-        self.status_data["phase"] = phase if status == "running" else "Idle"
+        phase_str = phase if status == "running" else "Idle"
+        self.status_data["phase"] = phase_str
+        if self._docked_prompt:
+            self._docked_prompt.update_status(phase=phase_str)
         if self.dashboard:
             self.dashboard.on_phase_change(phase, status)
         if self.prompt_session:
@@ -454,6 +713,8 @@ class InputOutput:
         """Called when the session cost is updated."""
         self.status_data["cost"] = total
         self.status_data["percentage"] = percentage
+        if self._docked_prompt:
+            self._docked_prompt.update_status(cost=total)
         if self.dashboard:
             self.dashboard.on_cost_update(total, percentage)
         if self.prompt_session:
@@ -461,10 +722,19 @@ class InputOutput:
 
     def on_agent_status(self, agent_id: str, status: str, task: str = None):
         """Called when a sub-agent's status changes."""
+        if self._docked_prompt:
+            # Count active agents
+            agent_count = self.status_data.get("agents", 0)
+            self._docked_prompt.update_status(agents=agent_count)
         if self.dashboard:
             self.dashboard.on_agent_status(agent_id, status, task)
         if self.prompt_session:
             self.prompt_session.app.invalidate()
+
+    def on_context_update(self, used: int, total: int):
+        """Called when context window usage changes."""
+        if self._docked_prompt:
+            self._docked_prompt.update_status(context_used=used, context_total=total)
 
     def on_policy_check(self, result: Any):
         """Called when a security policy scan result is available."""
@@ -517,6 +787,28 @@ class InputOutput:
     def set_mode(self, mode: str):
         """Set the current mode (CHAT, AUTO, ASK, etc)."""
         self.status_data["mode"] = mode
+        if self._docked_prompt:
+            # Map aider modes to docked prompt display
+            if mode.upper() == "AUTO":
+                self._docked_prompt.update_status(phase="Auto")
+            else:
+                self._docked_prompt.update_status(phase=mode)
+        if self.prompt_session:
+            self.prompt_session.app.invalidate()
+
+    def set_model(self, model_name: str):
+        """Set the current model name for status bar display."""
+        self.status_data["model_name"] = model_name
+        if self._docked_prompt:
+            self._docked_prompt.update_status(model_name=model_name)
+        if self.prompt_session:
+            self.prompt_session.app.invalidate()
+
+    def set_git_branch(self, branch: str):
+        """Set the current git branch for status bar display."""
+        self.status_data["git_branch"] = branch
+        if self._docked_prompt:
+            self._docked_prompt.update_status(git_branch=branch, cwd=os.getcwd())
         if self.prompt_session:
             self.prompt_session.app.invalidate()
 
@@ -1006,6 +1298,17 @@ class InputOutput:
 
         self.console.print(Text(inp), **style)
 
+    async def display_user_input_async(self, inp):
+        """Async version of display_user_input."""
+        from prompt_toolkit.patch_stdout import patch_stdout
+        from rich.text import Text
+
+        style = dict(style=self.user_input_color) if self.user_input_color else dict()
+        text = Text(inp, **style)
+
+        with patch_stdout(raw=True):
+            self.console.print(text)
+
     def user_input(self, inp, log_only=True):
         if not log_only:
             self.display_user_input(inp)
@@ -1105,31 +1408,43 @@ class InputOutput:
             res = group.preference
             self.user_input(f"{question}{res}", log_only=False)
         else:
-            while True:
-                try:
-                    if self.prompt_session:
-                        res = self.prompt_session.prompt(
-                            question,
-                            style=style,
-                            complete_while_typing=False,
-                        )
-                    else:
-                        res = input(question)
-                except EOFError:
-                    # Treat EOF (Ctrl+D) as if the user pressed Enter
-                    res = default
-                    break
+            from prompt_toolkit.patch_stdout import patch_stdout
+            with patch_stdout(raw=True):
+                while True:
+                    try:
+                        if self.prompt_session:
+                            if get_running_loop():
+                                from aider.async_utils import run_async_safely
+                                res = run_async_safely(
+                                    self.async_prompt_session.prompt_async(
+                                        question,
+                                        style=style,
+                                        complete_while_typing=False,
+                                    )
+                                )
+                            else:
+                                res = self.prompt_session.prompt(
+                                    question,
+                                    style=style,
+                                    complete_while_typing=False,
+                                )
+                        else:
+                            res = input(question)
+                    except EOFError:
+                        # Treat EOF (Ctrl+D) as if the user pressed Enter
+                        res = default
+                        break
 
-                if not res:
-                    res = default
-                    break
-                res = res.lower()
-                good = any(valid_response.startswith(res) for valid_response in valid_responses)
-                if good:
-                    break
+                    if not res:
+                        res = default
+                        break
+                    res = res.lower()
+                    good = any(valid_response.startswith(res) for valid_response in valid_responses)
+                    if good:
+                        break
 
-                error_message = f"Please answer with one of: {', '.join(valid_responses)}"
-                self.tool_error(error_message)
+                    error_message = f"Please answer with one of: {', '.join(valid_responses)}"
+                    self.tool_error(error_message)
 
         res = res.lower()[0]
 
@@ -1176,19 +1491,21 @@ class InputOutput:
         elif self.yes is False:
             res = "no"
         else:
-            try:
-                if self.prompt_session:
-                    res = self.prompt_session.prompt(
-                        question + " ",
-                        default=default,
-                        style=style,
-                        complete_while_typing=True,
-                    )
-                else:
-                    res = input(question + " ")
-            except EOFError:
-                # Treat EOF (Ctrl+D) as if the user pressed Enter
-                res = default
+            from prompt_toolkit.patch_stdout import patch_stdout
+            with patch_stdout(raw=True):
+                try:
+                    if self.prompt_session:
+                        res = self.prompt_session.prompt(
+                            question + " ",
+                            default=default,
+                            style=style,
+                            complete_while_typing=True,
+                        )
+                    else:
+                        res = input(question + " ")
+                except EOFError:
+                    # Treat EOF (Ctrl+D) as if the user pressed Enter
+                    res = default
 
         hist = f"{question.strip()} {res.strip()}"
         self.append_chat_history(hist, linebreak=True, blockquote=True)
@@ -1211,14 +1528,16 @@ class InputOutput:
         color = ensure_hash_prefix(color) if color else None
         style = dict(style=color) if self.pretty and color else dict()
         self._prepare_terminal_output()
-        try:
-            self.console.print(message, **style)
-        except UnicodeEncodeError:
-            # Fallback to ASCII-safe output
-            if isinstance(message, Text):
-                message = message.plain
-            message = str(message).encode("ascii", errors="replace").decode("ascii")
-            self.console.print(message, **style)
+        from prompt_toolkit.patch_stdout import patch_stdout
+        with patch_stdout(raw=True):
+            try:
+                self.console.print(message, **style)
+            except UnicodeEncodeError:
+                # Fallback to ASCII-safe output
+                if isinstance(message, Text):
+                    message = message.plain
+                message = str(message).encode("ascii", errors="replace").decode("ascii")
+                self.console.print(message, **style)
 
     def tool_error(self, message="", strip=True):
         self.num_error_outputs += 1
@@ -1253,7 +1572,7 @@ class InputOutput:
             code_theme=self.code_theme,
             inline_code_lexer="text",
         )
-        mdStream = MarkdownStream(mdargs=mdargs)
+        mdStream = MarkdownStream(mdargs=mdargs, io=self)
         return mdStream
 
     def assistant_output(self, message, pretty=None):
@@ -1275,7 +1594,9 @@ class InputOutput:
             show_resp = Text(message or "(empty response)")
 
         self._prepare_terminal_output()
-        self.console.print(show_resp)
+        from prompt_toolkit.patch_stdout import patch_stdout
+        with patch_stdout(raw=True):
+            self.console.print(show_resp)
 
     def set_placeholder(self, placeholder):
         """Set a one-time placeholder text for the next input prompt."""
@@ -1423,9 +1744,132 @@ class InputOutput:
 
         return output.getvalue()
 
+    def set_running_state(self, running: bool):
+        """Set the running state for the docked prompt UI."""
+        if self._docked_prompt:
+            self._docked_prompt.set_running(running)
+
+    def is_async_mode(self) -> bool:
+        """Check if running in async mode (always True as of v0.87+)."""
+        return True
+
+    # =============================================================================
+    # UI Modernization Methods (for backward compatibility with tests)
+    # =============================================================================
+    
+    def has_queued_input(self) -> bool:
+        """Check if there's queued input."""
+        if self._docked_prompt is not None:
+            return self._docked_prompt.has_queued_input()
+        if self._async_prompt_session is not None:
+            return self._async_prompt_session.has_queued_input()
+        return False
+    
+    def queue_input(self, message: str):
+        """Queue input for later processing."""
+        if self._docked_prompt is not None:
+            self._docked_prompt.queue_input(message)
+        elif self._async_prompt_session is not None:
+            self._async_prompt_session.queue_input(message)
+    
+    def get_queued_input(self) -> Optional[str]:
+        """Get queued input if any."""
+        if self._docked_prompt is not None:
+            return self._docked_prompt.get_queued_input()
+        if self._async_prompt_session is not None:
+            return self._async_prompt_session.get_queued_input()
+        return None
+    
+    def set_footer_mode(self, mode: str):
+        """Set the footer mode."""
+        valid_modes = {"task_running", "composer_empty", "composer_has_draft"}
+        if mode in valid_modes:
+            self.status_data["footer_mode"] = mode
+    
+    def set_task_running(self, running: bool):
+        """Update task running state in status bar."""
+        self.status_data["is_task_running"] = running
+        self.status_data["footer_mode"] = "task_running" if running else "composer_empty"
+    
+    def set_draft_status(self, has_draft: bool):
+        """Update draft status in status bar."""
+        self.status_data["has_draft"] = has_draft
+        self.status_data["footer_mode"] = "composer_has_draft" if has_draft else "composer_empty"
+    
+    def toast(self, message: str, duration: float = 5.0, topic: str = None):
+        """Show a toast notification immediately.
+        
+        Note: duration and topic are kept for API compatibility but 
+        toasts are displayed immediately and not tracked for expiration.
+        """
+        # Store for potential UI integration (dashboard, etc.)
+        self.toast_manager.toast(message, duration, topic)
+        
+        # Render immediately to console (one-shot, no cleanup needed)
+        try:
+            from rich.panel import Panel
+            toast_panel = Panel(
+                message,
+                title="🔔 Notification",
+                border_style="blue",
+                width=min(80, self.console.width - 4) if self.console.width else 80
+            )
+            self.console.print(toast_panel)
+        except Exception:
+            # Fallback to simple output if rich fails
+            self.tool_output(f"🔔 {message}")
+
 
 def get_rel_fname(fname, root):
     try:
         return os.path.relpath(fname, root)
     except ValueError:
         return fname
+
+
+# =============================================================================
+# Backward Compatibility Aliases
+# =============================================================================
+# These aliases support tests and external code that depend on older API names.
+
+# Alias for backward compatibility
+AiderPromptSession = AsyncAiderPromptSession
+
+
+class ToastManager:
+    """
+    Manager for temporary toast notifications.
+    
+    Backward compatibility class for tests and external integrations.
+    """
+    
+    def __init__(self):
+        self._toasts = []
+        self._lock = threading.Lock()
+    
+    def toast(self, message: str, duration: float = 5.0, topic: str = None):
+        """Add a toast message with optional topic for grouping."""
+        with self._lock:
+            # Remove existing toast with same topic
+            if topic:
+                self._toasts = [(msg, dur, exp, t) for msg, dur, exp, t in self._toasts if t != topic]
+            # Add new toast
+            expiration = time.time() + duration
+            self._toasts.append((message, duration, expiration, topic))
+    
+    def get_active(self) -> List[str]:
+        """Get all active (non-expired) toast messages."""
+        self._cleanup_expired()
+        with self._lock:
+            return [msg for msg, _, _, _ in self._toasts]
+    
+    def clear_topic(self, topic: str):
+        """Clear all toasts with the given topic."""
+        with self._lock:
+            self._toasts = [(msg, dur, exp, t) for msg, dur, exp, t in self._toasts if t != topic]
+    
+    def _cleanup_expired(self):
+        """Remove expired toasts."""
+        now = time.time()
+        with self._lock:
+            self._toasts = [(msg, dur, exp, t) for msg, dur, exp, t in self._toasts if exp > now]

@@ -72,15 +72,15 @@ def create_coder(
     background_semantic_index=True,
 ):
     """Create the session coder and attach optional agent support."""
-    from aider.coders import Coder
     from aider.coders.base_coder import UnknownEditFormat
+    from aider.coders.coder_factory import create_coder
 
     map_tokens = resolve_map_tokens(args, main_model)
 
     analytics.event("auto_commits", enabled=bool(args.auto_commits))
 
     try:
-        coder = Coder.create(
+        coder = create_coder(
             main_model=main_model,
             edit_format=args.edit_format,
             io=io,

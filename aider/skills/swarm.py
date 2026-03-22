@@ -3,6 +3,7 @@ import uuid
 from typing import List, Optional
 
 from .base import Skill, SkillContext, SkillResult
+from aider.coders.coder_factory import create_coder
 
 
 class SwarmSkill(Skill):
@@ -89,9 +90,7 @@ class SwarmSkill(Skill):
                 peer_ids = [a.id for a in agent_instances if a.id != agent.id]
                 # Provide sub-coder if not yet assigned
                 if not hasattr(agent, "coder") or agent.coder is None:
-                    from ..coders.base_coder import Coder
-
-                    agent.coder = Coder.create(
+                    agent.coder = create_coder(
                         main_model=parent_coder.main_model,
                         io=parent_coder.io,
                     )

@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">
-Aider (Security Hardened + Autonomous Agent Parity) v2.1.0
+Aider (Security Hardened + Autonomous Agent Parity) v2.2.0
 </h1>
 
 > **Note**: This is a security-hardened fork of the original [Aider](https://github.com/Aider-AI/aider) project by [Paul Gauthier](https://github.com/paul-gauthier). This fork includes:
@@ -20,8 +20,20 @@ AI Pair Programming in Your Terminal — Now with Enterprise-Grade Security
   <a href="https://github.com/i-may-have-stepped-in-it/aider/stargazers"><img alt="GitHub Stars" 
 src="https://img.shields.io/github/stars/i-may-have-stepped-in-it/aider?style=flat-square&logo=github&color=f1c40f&labelColor=555555"/></a>
   <img alt="Security Status" src="https://img.shields.io/badge/Security-12%20CVEs%20Fixed-brightgreen?style=flat-square&labelColor=555555"/>
-  <img alt="Tests" src="https://img.shields.io/badge/Tests-705%20passing-blue?style=flat-square&labelColor=555555"/>
+  <img alt="Tests" src="https://img.shields.io/badge/Tests-752%20passing-blue?style=flat-square&labelColor=555555"/>
 </p>
+
+## 🎨 Next-Generation TUI
+
+Experience a modern, non-blocking terminal interface inspired by **Kimi** and **Codex**:
+
+- **Persistent Status Bar**: Real-time context window usage (color-coded), session costs, and git branch visibility.
+- **Live Streaming View**: In-place updates that separate reasoning (`<thinking>` blocks) from final code output.
+- **Animated Tool Calls**: Visual spinners and bullet points for all background tool executions.
+- **Non-Blocking Prompt**: Keep typing while the agent works! 
+  - **Tab**: Queue your next message for the following turn.
+  - **Enter**: Steer or interrupt the current generation mid-stream.
+- **Thread-Safe Toasts**: Transient notifications for "file added", "copied", or "critique starting".
 
 ## 🔒 Security Hardening
 
