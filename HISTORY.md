@@ -2,6 +2,15 @@
 
 ### main branch
 
+- **Venice.ai, themes and Windows fixes**:
+  - Added Venice.ai as a provider (`--model venice`, `venice/<model>`, trait-based aliases) with live context/pricing metadata.
+  - Added Venice characters as chat personas and sub-agents (`venice@<slug>`, `/venice character`, `/agent spawn --character`).
+  - Added `/venice` command and `--venice-api-key`, `--venice-character`, `--venice-web-search` flags.
+  - Added `--theme` / `/theme` (aurora, codex, gemini, classic), a startup welcome card and a status-bar context meter.
+  - Fixed Windows crashes: `signal.SIGWINCH` and `import resource` at import time, and output without a native console.
+  - Fixed swapped completion-menu current-item colors; reasoning-setting warnings now only fire for user-set values.
+  - Venice sub-agents no longer overwrite `OPENAI_API_BASE` with the OpenClaw gateway.
+
 - **Async Architecture v2.2.0 - Persistent Prompt by Default**:
   - Migrated to async/await as the default execution model (no `AIDER_ASYNC` env var needed).
   - Implemented `AsyncRunningPromptManager` for true background generation with concurrent input.

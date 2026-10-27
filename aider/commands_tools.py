@@ -19,6 +19,160 @@ class ToolCommandsMixin:
                 error="Please provide a partial model name to search for.",
             )
 
+    def cmd_venice(self, args):
+        """Venice.ai: models, characters (agents) and web search.
+
+        /venice                     show status
+        /venice models [filter]     list Venice text models
+        /venice characters [filter] list Venice characters (hosted agents)
+        /venice character <slug>    chat with a character (`off` to clear)
+        /venice web on|off|auto     toggle Venice web search
+        /venice use <model|trait>   switch the main model to venice/<model>"""
+        from aider import venice
+
+        parts = args.strip().split(maxsplit=1)
+        sub = parts[0].lower() if parts else ""
+        rest = parts[1].strip() if len(parts) > 1 else ""
+
+        if not venice.api_key() and sub not in ("", "web", "character"):
+            self.io.tool_error("VENICE_API_KEY is not set. Get one at https://venice.ai/settings/api")
+            return
+
+        if sub == "":
+            key = "set" if venice.api_key() else "missing (set VENICE_API_KEY)"
+            self.io.tool_output(f"API key:    {key}")
+            self.io.tool_output(f"Endpoint:   {venice.api_base()}")
+            self.io.tool_output(f"Web search: {venice.runtime['web_search']}")
+            self.io.tool_output(f"Character:  {venice.runtime['character'] or 'none'}")
+            self.io.tool_output("Try /venice models, /venice characters, /model venice")
+            return
+
+        if sub == "models":
+            cat = venice.catalog(refresh=True)
+            rows = sorted(cat["models"].items())
+            if rest:
+                rows = [r for r in rows if rest.lower() in r[0].lower()]
+            if not rows:
+                self.io.tool_output("No matching Venice models.")
+                return
+            for mid, spec in rows:
+                ctx = spec.get("availableContextTokens") or 0
+                traits = ", ".join(spec.get("traits", []))
+                caps = spec.get("capabilities", {}) or {}
+                tags = [
+                    t
+                    for t, on in (
+                        ("code", caps.get("optimizedForCode")),
+                        ("tools", caps.get("supportsFunctionCalling")),
+                        ("vision", caps.get("supportsVision")),
+                        ("reasoning", caps.get("supportsReasoning")),
+                    )
+                    if on
+                ]
+                line = f"venice/{mid:<40} {ctx // 1000:>5}k ctx  {' '.join(tags)}"
+                if traits:
+                    line += f"  [{traits}]"
+                self.io.tool_output(line)
+            return
+
+        if sub == "characters":
+            chars = venice.list_characters()
+            if rest:
+                needle = rest.lower()
+                chars = [
+                    c
+                    for c in chars
+                    if needle in (c.get("name", "") + c.get("slug", "")).lower()
+                ]
+            if not chars:
+                self.io.tool_output("No Venice characters found.")
+                return
+            for c in chars[:50]:
+                desc = (c.get("description") or "").replace("\n", " ")
+                if len(desc) > 70:
+                    desc = desc[:67] + "..."
+                self.io.tool_output(f"{c.get('slug', '?'):<30} {c.get('name', '')}  {desc}")
+            if len(chars) > 50:
+                self.io.tool_output(f"... {len(chars) - 50} more; add a filter to narrow down")
+            self.io.tool_output("Use one with /venice character <slug> or /agent spawn --character <slug>")
+            return
+
+        if sub == "character":
+            if not rest:
+                self.show_command_usage("/venice", error="Usage: /venice character <slug>|off")
+                return
+            venice.runtime["character"] = None if rest.lower() in ("off", "none") else rest
+            state = venice.runtime["character"] or "off"
+            self.io.tool_output(f"Venice character: {state}")
+            if not venice.is_venice_model(self.coder.main_model.name):
+                self.io.tool_warning("Characters only apply to Venice models; try /model venice")
+            return
+
+        if sub == "web":
+            mode = rest.lower()
+            if mode not in ("on", "off", "auto"):
+                self.show_command_usage("/venice", error="Usage: /venice web on|off|auto")
+                return
+            venice.runtime["web_search"] = mode
+            self.io.tool_output(f"Venice web search: {mode}")
+            return
+
+        if sub == "use":
+            if not rest:
+                self.show_command_usage("/venice", error="Usage: /venice use <model|trait>")
+                return
+            name = rest if venice.is_venice_model(rest) else f"venice/{rest}"
+            return self.cmd_model(name)
+
+        self.show_command_usage("/venice", error=f"Unknown /venice subcommand: {sub}")
+
+    def cmd_theme(self, args):
+        "Switch the color theme: aurora, codex, gemini or classic"
+        from aider import themes
+
+        name = args.strip().lower()
+        if not name:
+            current = self.io.theme.name
+            for theme_name, theme in themes.THEMES.items():
+                marker = "*" if theme_name == current else " "
+                swatch = themes.gradient_text("■■■■■■", theme.gradient or (theme.accent,))
+                if self.io.pretty:
+                    self.io.console.print(f" {marker} {theme_name:<8} ", swatch, end="\n")
+                else:
+                    self.io.tool_output(f" {marker} {theme_name}")
+            return
+
+        if name not in themes.THEMES:
+            self.show_command_usage("/theme", error=f"Unknown theme: {name}")
+            return
+
+        theme = themes.THEMES[name]
+        io = self.io
+        io.theme = theme
+        if io.pretty:
+            io.user_input_color = theme.user_input_color
+            io.tool_output_color = theme.tool_output_color
+            io.tool_warning_color = theme.tool_warning_color
+            io.tool_error_color = theme.tool_error_color
+            for key in (
+                "completion_menu_color",
+                "completion_menu_bg_color",
+                "completion_menu_current_color",
+                "completion_menu_current_bg_color",
+            ):
+                setattr(io, key, theme.completion_menu.get(key))
+        io.assistant_output_color = theme.assistant_output_color
+        io.code_theme = theme.code_theme
+        io.tool_output(f"Theme: {name}")
+
+    def completions_theme(self):
+        from aider import themes
+
+        return list(themes.THEMES)
+
+    def completions_venice(self):
+        return ["models", "characters", "character", "web", "use"]
+
     def cmd_web(self, args, return_content=False):
         "Scrape a webpage, convert to markdown and send in a message"
         from aider import commands as commands_module

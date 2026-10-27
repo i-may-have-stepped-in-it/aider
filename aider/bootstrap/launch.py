@@ -322,13 +322,15 @@ def prepare_main_model(args, argv, io, analytics, git_root):
             main_model.set_thinking_tokens(args.thinking_tokens)
 
     if args.check_model_accepts_settings:
+        # Only warn about values the user chose; the built-in defaults apply to every
+        # model, so warning about them would just be noise for non-reasoning models.
         settings_to_check = [
-            {"arg": args.reasoning_effort, "name": "reasoning_effort"},
-            {"arg": args.thinking_tokens, "name": "thinking_tokens"},
+            {"arg": args.reasoning_effort, "name": "reasoning_effort", "default": "medium"},
+            {"arg": args.thinking_tokens, "name": "thinking_tokens", "default": "4096"},
         ]
 
         for setting in settings_to_check:
-            if setting["arg"] is not None and (
+            if setting["arg"] is not None and setting["arg"] != setting["default"] and (
                 not main_model.accepts_settings
                 or setting["name"] not in main_model.accepts_settings
             ):
@@ -405,6 +407,16 @@ def apply_env_and_deprecated_args(args, io):
 
     if args.openai_api_key:
         os.environ["OPENAI_API_KEY"] = args.openai_api_key
+
+    if getattr(args, "venice_api_key", None):
+        os.environ["VENICE_API_KEY"] = args.venice_api_key
+
+    from aider import venice
+
+    if getattr(args, "venice_character", None):
+        venice.runtime["character"] = args.venice_character
+    if getattr(args, "venice_web_search", None):
+        venice.runtime["web_search"] = args.venice_web_search
 
     handle_deprecated_model_args(args, io)
 

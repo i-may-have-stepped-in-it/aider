@@ -248,23 +248,32 @@ class AgentExecutor:
     ) -> Coder:
         """Create an isolated coder for the sub-agent."""
         from aider.coders import Coder
-        from aider.models import Model
+        from aider.models import Model, resolve_model_alias
 
         # Determine model name - use agent's model or parent's
         # For OpenClaw gateway, we can use tier prefixes like @intel, @speed, @uncen
         model_name = agent.model or parent_coder.main_model.name
+        model_name = resolve_model_alias(model_name)
 
-        # Ensure we're using the OpenClaw gateway
-        # This routes through http://127.0.0.1:18789/v1
-        configure_gateway()
+        # Venice models (and Venice characters) talk to api.venice.ai directly
+        is_venice = model_name.lower().startswith("venice/")
 
-        # Force OpenClaw mode for sub-agents if parent is using OpenClaw
-        if "openclaw" in model_name.lower() or ":18789" in os.environ.get("OPENAI_API_BASE", ""):
-            os.environ["AIDER_OPENCLAW_MODE"] = "enabled"
+        if not is_venice:
+            # Ensure we're using the OpenClaw gateway
+            # This routes through http://127.0.0.1:18789/v1
+            configure_gateway()
+
+            # Force OpenClaw mode for sub-agents if parent is using OpenClaw
+            if "openclaw" in model_name.lower() or ":18789" in os.environ.get(
+                "OPENAI_API_BASE", ""
+            ):
+                os.environ["AIDER_OPENCLAW_MODE"] = "enabled"
 
         # Convert model name for gateway if needed
         # Supports tier prefixes like @intel, @speed, @uncen
-        if model_name.startswith("@"):
+        if is_venice:
+            gateway_model = model_name
+        elif model_name.startswith("@"):
             gateway_model = model_name
         elif model_name in ("chat", "default"):
             gateway_model = "chat"

@@ -108,8 +108,13 @@ def handle_timeout_setup(args):
         models.request_timeout = args.timeout
 
 
-def handle_theme_setup(args):
-    """Handle theme (dark/light mode) setup."""
+def handle_theme_setup(args, parser=None):
+    """Handle theme setup: apply the --theme palette, then dark/light mode overrides."""
+    from aider import themes
+
+    if getattr(args, "theme", None):
+        themes.apply_to_args(args, parser)
+
     if args.dark_mode:
         args.user_input_color = "#32FF32"
         args.tool_error_color = "#FF3333"

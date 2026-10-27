@@ -102,7 +102,7 @@ async def async_main(
         return git_root
 
     # Theme affects IO construction
-    handle_theme_setup(args)
+    handle_theme_setup(args, parser)
 
     # Setup IO
     io = setup_io_with_error_handling(args, input, output, io_cls=InputOutput)

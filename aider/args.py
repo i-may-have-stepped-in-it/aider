@@ -95,6 +95,21 @@ def get_parser(default_config_files, git_root):
         help="Specify the api base url",
     )
     group.add_argument(
+        "--venice-api-key",
+        help="Specify the Venice.ai API key (use with --model venice)",
+    )
+    group.add_argument(
+        "--venice-character",
+        metavar="SLUG",
+        help="Chat with a Venice.ai character (hosted agent) by slug",
+    )
+    group.add_argument(
+        "--venice-web-search",
+        choices=["auto", "on", "off"],
+        default="auto",
+        help="Let Venice.ai models search the web (default: auto)",
+    )
+    group.add_argument(
         "--openai-api-type",
         help="(deprecated, use --set-env OPENAI_API_TYPE=<value>)",
     )
@@ -327,6 +342,15 @@ def get_parser(default_config_files, git_root):
     ##########
     group = parser.add_argument_group("Output settings")
     group.add_argument(
+        "--theme",
+        choices=["aurora", "codex", "gemini", "classic"],
+        default="aurora",
+        help=(
+            "Color theme: aurora (vivid, default), codex (calm, minimal), gemini (bright"
+            " blues), classic (original aider colors)"
+        ),
+    )
+    group.add_argument(
         "--dark-mode",
         action="store_true",
         help="Use colors suitable for a dark terminal background (default: False)",
@@ -405,7 +429,7 @@ def get_parser(default_config_files, git_root):
         default=None,
         help=(
             "Set the color for the current item in the completion menu (default: terminal's default"
-            " background color)"
+            " text color)"
         ),
     )
     group.add_argument(
@@ -414,7 +438,7 @@ def get_parser(default_config_files, git_root):
         default=None,
         help=(
             "Set the background color for the current item in the completion menu (default:"
-            " terminal's default text color)"
+            " terminal's default background color)"
         ),
     )
     group.add_argument(
