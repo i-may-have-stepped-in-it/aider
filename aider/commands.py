@@ -121,6 +121,8 @@ class Commands(
         "mcp": "/mcp add <name> <cmd...> | /mcp list | /mcp remove <name>",
         "skill": "/skill list | /skill run <skill> [...] | /skill info <skill>",
         "agent": "/agent <subcommand> [...]",
+        "venice": "/venice [models|characters|character <slug>|web on|off|auto|use <model>]",
+        "theme": "/theme [aurora|codex|gemini|classic]",
         "a2a": "/a2a <subcommand> [...]",
     }
     voice = None

@@ -35,6 +35,48 @@ Experience a modern, non-blocking terminal interface inspired by **Kimi** and **
   - **Enter**: Steer or interrupt the current generation mid-stream.
 - **Thread-Safe Toasts**: Transient notifications for "file added", "copied", or "critique starting".
 
+### Themes
+
+Pick a look with `--theme` or switch live with `/theme`:
+
+| Theme | Feel |
+|---|---|
+| `aurora` (default) | Violet → cyan gradients, Kimi-style |
+| `codex` | Quiet, low-chrome, Codex-style |
+| `gemini` | Google blue → purple → rose |
+| `classic` | The original aider colors |
+
+Explicit `--user-input-color`, `--code-theme` etc. always override the theme. Startup shows a
+welcome card with the model, directory and context window, and the status bar shows a live
+context meter (`ctx ▰▰▰▱▱▱▱▱▱▱ 31%`).
+
+## 🌐 Venice.ai Models & Agents
+
+Venice's OpenAI-compatible API is built in, including its 1M-token-context models.
+
+```bash
+export VENICE_API_KEY=...          # https://venice.ai/settings/api
+aider --model venice               # Venice's current best coding model
+aider --model venice-smart         # most_intelligent trait
+aider --model venice/kimi-k3       # any Venice model id
+aider --model venice@my-character  # talk to a Venice character
+```
+
+Aliases follow Venice's live *traits*, so they track whatever Venice currently recommends:
+`venice`/`venice-coder` (default_code), `venice-smart`, `venice-reasoning`, `venice-uncensored`,
+`venice-fast` (a small, cheap helper model, also used as the weak model). Context windows and
+prices come from Venice's model list, cached for 24h.
+
+In chat:
+
+- `/venice` — status; `/venice models [filter]`; `/venice use <model>`
+- `/venice characters [filter]` and `/venice character <slug>|off` — Venice characters (hosted agents)
+- `/venice web on|off|auto` — Venice's built-in web search
+- `/agent spawn "Review auth.py" --character <slug>` — run a Venice character as a sub-agent
+  (Venice sub-agents talk to Venice directly, not through the OpenClaw gateway)
+
+Flags: `--venice-api-key`, `--venice-character SLUG`, `--venice-web-search auto|on|off`.
+
 ## 🔒 Security Hardening
 
 This fork addresses critical security vulnerabilities found in the original codebase:

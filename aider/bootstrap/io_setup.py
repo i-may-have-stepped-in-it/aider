@@ -69,6 +69,7 @@ def setup_io_with_error_handling(args, input=None, output=None, io_cls=None):
             notifications=args.notifications,
             notifications_command=args.notifications_command,
             enable_dashboard=args.dashboard,
+            theme=getattr(args, "theme", None),
         )
         
         io.rule()

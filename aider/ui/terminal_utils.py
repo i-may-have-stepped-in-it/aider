@@ -38,8 +38,10 @@ class TerminalWidthCache:
     def _setup_signal_handler(self):
         try:
             # Only register signal handler in main thread
-            if threading.current_thread() is threading.main_thread():
-                signal.signal(signal.SIGWINCH, self._on_resize)
+            # SIGWINCH doesn't exist on Windows; the TTL still keeps the width fresh there.
+            sigwinch = getattr(signal, "SIGWINCH", None)
+            if sigwinch and threading.current_thread() is threading.main_thread():
+                signal.signal(sigwinch, self._on_resize)
         except (ValueError, OSError):
             pass  # Signal not available or not in main thread
     

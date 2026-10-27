@@ -206,6 +206,12 @@ class BaseCoderOutputMixin:
 
         self.message_tokens_received += completion_tokens
 
+        # Feed the status bar's context meter
+        status = getattr(self.io, "status_data", None)
+        if isinstance(status, dict):
+            status["tokens"] = prompt_tokens
+            status["max_tokens"] = self.main_model.info.get("max_input_tokens") or 0
+
         tokens_report = f"Tokens: {format_tokens(self.message_tokens_sent)} sent"
 
         if cache_write_tokens:

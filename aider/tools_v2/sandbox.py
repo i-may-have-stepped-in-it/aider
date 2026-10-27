@@ -39,7 +39,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import resource
+try:
+    import resource
+except ImportError:  # Windows has no setrlimit
+    resource = None
 import signal
 import subprocess
 import tempfile
@@ -309,6 +312,10 @@ class Sandbox(ABC):
             max_memory: Maximum memory in bytes (address space limit)
             max_fds: Maximum number of file descriptors
         """
+        if resource is None:
+            logger.warning("Resource limits are not supported on this platform")
+            return
+
         try:
             # Address space (virtual memory) limit
             # Use 1.5x max_memory to allow for overhead while preventing exhaustion

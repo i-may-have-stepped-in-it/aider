@@ -116,7 +116,28 @@ MODEL_ALIASES = {
     "openclaw": "openclaw:chat",
     "openclaw-chat": "openclaw:chat",
     "openclaw-main": "openclaw:main",
+    # Venice.ai - traits resolve to Venice's current best model for the job
+    "venice": "venice/default_code",
+    "venice-coder": "venice/default_code",
+    "venice-fast": "venice/fastest",
+    "venice-reasoning": "venice/default_reasoning",
+    "venice-smart": "venice/most_intelligent",
+    "venice-uncensored": "venice/most_uncensored",
 }
+
+
+def resolve_model_alias(name):
+    """Resolve an alias, keeping a Venice character suffix: ``venice@slug`` -> ``venice/...@slug``."""
+    if name in MODEL_ALIASES:
+        return MODEL_ALIASES[name]
+    if "@" in name and not name.startswith("@"):
+        base, character = name.rsplit("@", 1)
+        target = MODEL_ALIASES.get(base, "")
+        if target.startswith("venice/") and character:
+            return f"{target}@{character}"
+    return name
+
+
 # Model metadata loaded from resources and user's files.
 
 
@@ -246,6 +267,11 @@ class ModelInfoManager:
         return dict()
 
     def get_model_info(self, model):
+        from aider import venice
+
+        if venice.is_venice_model(model):
+            return venice.model_info(model)
+
         if self.openclaw_manager.supports_model(model):
             openclaw_info = self.openclaw_manager.get_model_info(model)
             if openclaw_info:
@@ -335,7 +361,7 @@ class Model(ModelSettings):
         self, model, weak_model=None, editor_model=None, editor_edit_format=None, verbose=False
     ):
         # Map any alias to its canonical name
-        model = MODEL_ALIASES.get(model, model)
+        model = resolve_model_alias(model)
 
         self.name = model
         self.verbose = verbose
@@ -435,6 +461,16 @@ class Model(ModelSettings):
                 self.accepts_settings.append("reasoning_effort")
 
     def apply_generic_model_settings(self, model):
+        if model.startswith("venice/"):
+            self.edit_format = "diff"
+            self.use_repo_map = True
+            self.examples_as_sys_msg = True
+            if not model.startswith("venice/fastest"):
+                self.weak_model_name = "venice/fastest"
+            if self.info.get("supports_reasoning_effort"):
+                self.accepts_settings.append("reasoning_effort")
+            return  # <--
+
         if "/o3-mini" in model:
             self.edit_format = "diff"
             self.use_repo_map = True
@@ -729,6 +765,7 @@ class Model(ModelSettings):
             anthropic="ANTHROPIC_API_KEY",
             groq="GROQ_API_KEY",
             fireworks_ai="FIREWORKS_API_KEY",
+            venice="VENICE_API_KEY",
         )
         var = None
         if model in OPENAI_MODELS:
@@ -749,6 +786,9 @@ class Model(ModelSettings):
         # https://github.com/BerriAI/litellm/issues/3190
 
         model = self.name
+        if model.lower().startswith("venice/"):
+            return validate_variables(["VENICE_API_KEY"])
+
         res = litellm.validate_environment(model)
 
         # If missing AWS credential keys but AWS_PROFILE is set, consider AWS credentials valid
@@ -1143,6 +1183,11 @@ class Model(ModelSettings):
                 kwargs["api_key"] = os.environ.get("OPENAI_API_KEY")
             if "api_base" not in kwargs:
                 kwargs["api_base"] = os.environ.get("OPENAI_API_BASE")
+
+        if self.name.lower().startswith("venice/"):
+            from aider import venice
+
+            venice.apply_to_kwargs(self.name, kwargs)
 
         res = litellm.completion(**kwargs)
         return hash_object, res

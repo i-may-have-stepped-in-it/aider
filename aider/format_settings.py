@@ -6,6 +6,9 @@ def scrub_sensitive_info(args, text):
     if text and args.anthropic_api_key:
         last_4 = args.anthropic_api_key[-4:]
         text = text.replace(args.anthropic_api_key, f"...{last_4}")
+    venice_key = getattr(args, "venice_api_key", None)
+    if text and venice_key:
+        text = text.replace(venice_key, f"...{venice_key[-4:]}")
     return text
 
 

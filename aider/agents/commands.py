@@ -119,6 +119,7 @@ class AgentCommands:
         Examples:
         /agent spawn "Review auth.py for security issues" --model claude-sonnet
         /agent spawn "Add tests for user.py" --files user.py --readonly test_base.py
+        /agent spawn "Audit this design" --character my-venice-character
         /agent list --status running
         /agent wait abc123
         """
@@ -156,6 +157,7 @@ class AgentCommands:
         files = []
         readonly_files = []
         name = None
+        character = None
 
         i = 0
         while i < len(parser_args):
@@ -187,6 +189,15 @@ class AgentCommands:
                     return None
                 readonly_files = parser_args[i + 1].split(",")
                 i += 2
+            elif arg == "--character":
+                if i + 1 >= len(parser_args):
+                    self._show_subcommand_usage(
+                        "/agent spawn <task> --character SLUG [--model venice/MODEL]",
+                        "Option --character requires a Venice character slug.",
+                    )
+                    return None
+                character = parser_args[i + 1]
+                i += 2
             elif arg == "--name":
                 if i + 1 >= len(parser_args):
                     self._show_subcommand_usage(
@@ -212,6 +223,15 @@ class AgentCommands:
                 "Task required.",
             )
             return None
+
+        if character:
+            # A Venice character is an agent hosted by Venice: attach it to a Venice model
+            from aider.models import MODEL_ALIASES
+
+            base = MODEL_ALIASES.get(model or "venice", model or "venice")
+            if not base.lower().startswith("venice/"):
+                base = MODEL_ALIASES["venice"]
+            model = f"{base.split('@')[0]}@{character}"
 
         # Spawn agent
         async def do_spawn():

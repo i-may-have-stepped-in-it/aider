@@ -7,6 +7,45 @@ from pathlib import Path
 from aider.coders.coder_factory import create_coder
 
 
+def _print_welcome(coder, io):
+    from aider import __version__, themes, venice
+
+    model = coder.main_model
+    extras = {}
+    max_input = model.info.get("max_input_tokens")
+    if max_input:
+        extras["context"] = f"{max_input:,} tokens"
+    if venice.is_venice_model(model.name):
+        extras["venice"] = f"web search {venice.runtime['web_search']}"
+        _, character = venice.split_character(model.name)
+        character = character or venice.runtime["character"]
+        if character:
+            extras["character"] = character
+
+    io.console.print(
+        themes.welcome_panel(
+            io.theme,
+            __version__,
+            model.name,
+            str(Path.cwd()),
+            files=len(coder.abs_fnames),
+            extras=extras,
+        )
+    )
+
+
+def show_welcome(coder):
+    """Print the welcome card (pretty terminals only)."""
+    io = coder.io
+    if not getattr(io, "pretty", False) or not hasattr(io, "console"):
+        return
+
+    try:
+        _print_welcome(coder, io)
+    except Exception:
+        pass  # Never let decoration break startup
+
+
 def attach_runtime_services(args, coder, analytics, git_root, hooks_manager):
     """Attach file watching, clipboard support, and hooks to the coder."""
     ignores = []
@@ -33,6 +72,7 @@ def attach_runtime_services(args, coder, analytics, git_root, hooks_manager):
         analytics.event("copy-paste mode")
         ClipboardWatcher(coder.io, verbose=args.verbose)
 
+    show_welcome(coder)
     coder.show_announcements()
 
     if hooks_manager:

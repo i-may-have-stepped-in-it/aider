@@ -6,6 +6,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import tempfile
 import sys
 import threading
 
@@ -13,6 +14,7 @@ import threading
 import time
 import webbrowser
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from io import StringIO
@@ -120,14 +122,32 @@ class AsyncAiderPromptSession:
         
         Uses patch_stdout to allow background output during prompt.
         """
-        from prompt_toolkit.patch_stdout import patch_stdout
         
-        with patch_stdout(raw=True):
+        with safe_patch_stdout():
             return await self._session.prompt_async(message, **kwargs)
     
     def prompt_sync(self, message: str = "", **kwargs) -> str:
         """Synchronous prompt (original behavior)."""
         return self._session.prompt(message, **kwargs)
+
+
+@contextmanager
+def safe_patch_stdout():
+    """
+    prompt_toolkit's patch_stdout, falling back to plain output when there's no
+    real console (Windows under Git Bash/mintty, piped output, CI).
+    """
+    from contextlib import ExitStack
+
+    from prompt_toolkit.patch_stdout import patch_stdout
+
+    stack = ExitStack()
+    try:
+        stack.enter_context(patch_stdout(raw=True))
+    except Exception:
+        pass
+    with stack:
+        yield
 
 
 def ensure_hash_prefix(color):
@@ -355,8 +375,12 @@ class InputOutput:
         notifications=False,
         notifications_command=None,
         enable_dashboard=False,
+        theme=None,
     ):
+        from aider import themes
+
         explicit_pretty = pretty is not None
+        self.theme = themes.get(theme) if theme else themes.THEMES["classic"]
         self.placeholder = None
         self.interrupted = False
         self.never_prompts = set()
@@ -661,26 +685,40 @@ class InputOutput:
         agents = self.status_data.get("agents", 0)
         hint = self.status_data.get("hint", "")
 
-        # Style colors
-        mode_style = 'fg="#00ff00"' if mode == "AUTO" else 'fg="#ffffff"'
-        phase_style = 'fg="#ffff00"' if phase != "Idle" else ""
-        cost_style = 'fg="#ff00ff"'
-        model_style = 'fg="#00aaff"'
+        from html import escape
 
-        hint_part = f" | Hint: {hint}" if hint else ""
+        from aider.themes import context_meter
+
+        theme = self.theme
+        accent = f'fg="{theme.accent}"'
+        muted = f'fg="{theme.muted}"'
+        mode_style = 'fg="#22C55E"' if mode == "AUTO" else accent
+        phase_style = f'fg="{theme.tool_warning_color}"' if phase != "Idle" else muted
 
         # Shorten model name if too long
-        if len(model) > 20:
-            model = model[:17] + "..."
+        if len(model) > 28:
+            model = model[:25] + "..."
 
-        return HTML(
-            f"<style {mode_style}>[{mode}]</style> "
-            f"<style {model_style}>{model}</style> "
-            f"<style {phase_style}>({phase})</style> "
-            f"<style {cost_style}>${cost:.3f}</style> "
-            f"A:{agents}"
-            f"{hint_part}"
-        )
+        sep = f"<style {muted}> · </style>"
+        parts = [
+            f"<style {mode_style}><b>{escape(mode)}</b></style>",
+            f"<style {accent}>{escape(model)}</style>",
+            f"<style {phase_style}>{escape(phase)}</style>",
+        ]
+        tokens = self.status_data.get("tokens") or 0
+        max_tokens = self.status_data.get("max_tokens") or 0
+        if max_tokens:
+            meter = context_meter(tokens, max_tokens)
+            parts.append(f"<style {muted}>ctx</style> {escape(meter)}")
+        if percentage:
+            parts.append(f"<style {muted}>budget</style> {percentage:.0f}%")
+        parts.append(f"<style {muted}>${cost:.3f}</style>")
+        if agents:
+            parts.append(f"<style {muted}>agents</style> {agents}")
+        if hint:
+            parts.append(f"<style {muted}>{escape(hint)}</style>")
+
+        return HTML(sep.join(parts))
 
     def show_hint(self, event_type: str, data: dict = None):
         """Show a hint in the terminal status bar."""
@@ -863,17 +901,17 @@ class InputOutput:
         return " Enter submit | Alt-Enter newline | Ctrl-X Ctrl-E external editor "
 
     def _get_prompt_toolbar(self):
+        from prompt_toolkit.formatted_text import to_formatted_text
+
         status_bar = self._get_bottom_toolbar()
         input_toolbar = self._get_input_toolbar().strip()
 
-        if hasattr(status_bar, "formatted_text"):
-            status_text = "".join(fragment[1] for fragment in status_bar.formatted_text)
-        else:
-            status_text = str(status_bar)
-
-        if status_text and input_toolbar:
-            return f"{status_text} | {input_toolbar}"
-        return status_text or input_toolbar
+        fragments = list(to_formatted_text(status_bar)) if status_bar else []
+        if input_toolbar:
+            if fragments:
+                fragments.append((f"fg:{self.theme.muted}", "  ·  "))
+            fragments.append((f"fg:{self.theme.muted}", input_toolbar))
+        return fragments
 
     def _get_style(self):
         style_dict = {}
@@ -900,13 +938,17 @@ class InputOutput:
         # Conditionally add 'completion-menu.completion.current' style
         completion_menu_current_style = []
         if self.completion_menu_current_bg_color:
-            completion_menu_current_style.append(self.completion_menu_current_bg_color)
+            completion_menu_current_style.append(f"bg:{self.completion_menu_current_bg_color}")
         if self.completion_menu_current_color:
-            completion_menu_current_style.append(f"bg:{self.completion_menu_current_color}")
+            completion_menu_current_style.append(self.completion_menu_current_color)
         if completion_menu_current_style:
             style_dict["completion-menu.completion.current"] = " ".join(
                 completion_menu_current_style
             )
+
+        if self.theme.name != "classic":
+            # Flat status bar instead of prompt_toolkit's reverse-video block
+            style_dict["bottom-toolbar"] = "noreverse"
 
         return Style.from_dict(style_dict)
 
@@ -1032,7 +1074,8 @@ class InputOutput:
     def rule(self):
         self._prepare_terminal_output()
         if self.pretty:
-            style = dict(style=self.user_input_color) if self.user_input_color else dict()
+            color = self.theme.muted if self.theme.name != "classic" else self.user_input_color
+            style = dict(style=color) if color else dict()
             self.console.rule(**style)
         else:
             print()
@@ -1300,13 +1343,12 @@ class InputOutput:
 
     async def display_user_input_async(self, inp):
         """Async version of display_user_input."""
-        from prompt_toolkit.patch_stdout import patch_stdout
         from rich.text import Text
 
         style = dict(style=self.user_input_color) if self.user_input_color else dict()
         text = Text(inp, **style)
 
-        with patch_stdout(raw=True):
+        with safe_patch_stdout():
             self.console.print(text)
 
     def user_input(self, inp, log_only=True):
@@ -1408,8 +1450,7 @@ class InputOutput:
             res = group.preference
             self.user_input(f"{question}{res}", log_only=False)
         else:
-            from prompt_toolkit.patch_stdout import patch_stdout
-            with patch_stdout(raw=True):
+            with safe_patch_stdout():
                 while True:
                     try:
                         if self.prompt_session:
@@ -1491,8 +1532,7 @@ class InputOutput:
         elif self.yes is False:
             res = "no"
         else:
-            from prompt_toolkit.patch_stdout import patch_stdout
-            with patch_stdout(raw=True):
+            with safe_patch_stdout():
                 try:
                     if self.prompt_session:
                         res = self.prompt_session.prompt(
@@ -1528,8 +1568,7 @@ class InputOutput:
         color = ensure_hash_prefix(color) if color else None
         style = dict(style=color) if self.pretty and color else dict()
         self._prepare_terminal_output()
-        from prompt_toolkit.patch_stdout import patch_stdout
-        with patch_stdout(raw=True):
+        with safe_patch_stdout():
             try:
                 self.console.print(message, **style)
             except UnicodeEncodeError:
@@ -1594,8 +1633,7 @@ class InputOutput:
             show_resp = Text(message or "(empty response)")
 
         self._prepare_terminal_output()
-        from prompt_toolkit.patch_stdout import patch_stdout
-        with patch_stdout(raw=True):
+        with safe_patch_stdout():
             self.console.print(show_resp)
 
     def set_placeholder(self, placeholder):
